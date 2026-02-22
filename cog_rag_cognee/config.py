@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     # LLM
     llm_provider: str = "ollama"
     llm_model: str = "llama3.1:8b"
-    llm_endpoint: str = "http://localhost:11434"
+    llm_endpoint: str = "http://localhost:11434/v1"
+    llm_api_key: str = "ollama"
 
     # Embeddings
     embedding_provider: str = "ollama"
@@ -24,6 +25,10 @@ class Settings(BaseSettings):
     graph_database_url: str = "neo4j://localhost:7687"
     graph_database_username: str = "neo4j"
     graph_database_password: str = "password"
+
+    # Cognee SDK
+    huggingface_tokenizer: str = "gpt2"
+    enable_backend_access_control: bool = False
 
     # Vector DB
     vector_db_provider: str = "lancedb"

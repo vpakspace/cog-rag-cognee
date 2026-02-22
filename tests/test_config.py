@@ -26,7 +26,7 @@ def test_ollama_base_url():
     """ollama_base_url property derives from llm_endpoint."""
     s = Settings()
     assert s.ollama_base_url == s.llm_endpoint
-    assert s.ollama_base_url == "http://localhost:11434"
+    assert s.ollama_base_url == "http://localhost:11434/v1"
 
 
 def test_docling_use_gpu_default():

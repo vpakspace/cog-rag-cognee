@@ -15,16 +15,19 @@ def build_cognee_env(settings: Settings) -> dict[str, str]:
         "LLM_PROVIDER": settings.llm_provider,
         "LLM_MODEL": settings.llm_model,
         "LLM_ENDPOINT": settings.llm_endpoint,
+        "LLM_API_KEY": settings.llm_api_key,
         "EMBEDDING_PROVIDER": settings.embedding_provider,
         "EMBEDDING_MODEL": settings.embedding_model,
         "EMBEDDING_ENDPOINT": settings.embedding_endpoint,
         "EMBEDDING_DIMENSIONS": str(settings.embedding_dimensions),
+        "HUGGINGFACE_TOKENIZER": settings.huggingface_tokenizer,
         "GRAPH_DATABASE_PROVIDER": settings.graph_database_provider,
         "GRAPH_DATABASE_URL": settings.graph_database_url,
         "GRAPH_DATABASE_USERNAME": settings.graph_database_username,
         "GRAPH_DATABASE_PASSWORD": settings.graph_database_password,
         "VECTOR_DB_PROVIDER": settings.vector_db_provider,
         "STORAGE_ROOT_DIR": settings.storage_root_dir,
+        "ENABLE_BACKEND_ACCESS_CONTROL": str(settings.enable_backend_access_control).lower(),
     }
 
 
