@@ -1,6 +1,21 @@
 """Shared test fixtures and environment defaults."""
 
 import os
+import sys
+import types
+
+# Inject a stub 'cognee' module so service.py can be imported without
+# installing the real Cognee SDK. Tests mock it via unittest.mock.patch.
+if "cognee" not in sys.modules:
+    _cognee_stub = types.ModuleType("cognee")
+    _cognee_stub.add = None
+    _cognee_stub.cognify = None
+    _cognee_stub.search = None
+    _cognee_stub.prune = types.ModuleType("cognee.prune")
+    _cognee_stub.prune.prune_data = None
+    _cognee_stub.prune.prune_system = None
+    sys.modules["cognee"] = _cognee_stub
+    sys.modules["cognee.prune"] = _cognee_stub.prune
 
 # Set default env vars before any Settings import
 os.environ.setdefault("LLM_PROVIDER", "ollama")
