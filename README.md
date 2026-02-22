@@ -90,7 +90,7 @@ cd cog-rag-cognee
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Start services
+# 3. Start services (Neo4j with APOC plugin + Ollama)
 docker compose up -d
 
 # 4. Pull Ollama models
@@ -98,7 +98,7 @@ bash scripts/pull_models.sh
 
 # 5. Configure
 cp .env.example .env
-# Edit .env if needed
+# Edit .env — set GRAPH_DATABASE_PASSWORD to match your Neo4j
 
 # 6. Run API
 python run_api.py
@@ -106,6 +106,40 @@ python run_api.py
 # 7. Run UI (separate terminal)
 streamlit run ui/streamlit_app.py --server.port 8506
 ```
+
+## Cognee SDK Requirements
+
+Cognee SDK v0.5.2 has specific configuration needs for a local Ollama + Neo4j stack.
+All required settings are pre-configured in `.env.example`. Key points:
+
+### Ollama Endpoints (two different APIs)
+
+| Variable | Value | Why |
+|----------|-------|-----|
+| `LLM_ENDPOINT` | `http://localhost:11434/v1` | Cognee uses `OpenAI(base_url=...)` which appends `/chat/completions`. Ollama's OpenAI-compatible API lives at `/v1/chat/completions`, so the base URL must include `/v1`. |
+| `EMBEDDING_ENDPOINT` | `http://localhost:11434/api/embed` | Cognee's embedding engine POSTs directly to this URL (no path appending). Ollama's native embed API is at `/api/embed`. |
+
+### Neo4j with APOC Plugin
+
+Cognee uses `apoc.create.addLabels` for graph operations. Neo4j must have the APOC plugin installed.
+
+The provided `docker-compose.yml` enables APOC automatically via `NEO4J_PLUGINS: '["apoc"]'`.
+
+If running Neo4j manually:
+```bash
+docker run -d --name neo4j -p 7474:7474 -p 7687:7687 \
+  -e NEO4J_AUTH=neo4j/password \
+  -e NEO4J_PLUGINS='["apoc"]' \
+  neo4j:5
+```
+
+### Additional Required Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `LLM_API_KEY` | `ollama` | Cognee validates this is set (any non-empty value for Ollama) |
+| `HUGGINGFACE_TOKENIZER` | `gpt2` | Tokenizer for chunk sizing. Use a public model (not gated repos like `meta-llama/*`) |
+| `ENABLE_BACKEND_ACCESS_CONTROL` | `false` | Cognee v0.5.0+ enables multi-user access control by default. Set to `false` for local single-user dev |
 
 ## API Endpoints
 
@@ -193,7 +227,7 @@ cog-rag-cognee/
 │   └── example.owl           # Example domain ontology
 ├── data/                     # Sample documents (EN/RU)
 ├── benchmark/                # Evaluation questions
-├── tests/                    # 43 pytest tests, 92% coverage
+├── tests/                    # 43 pytest tests, 93% coverage
 ├── docker-compose.yml        # Neo4j + Ollama
 ├── requirements.txt
 ├── pyproject.toml
@@ -234,7 +268,7 @@ Results are saved to `benchmark/results.json`. Questions are in `benchmark/quest
 ## Tests
 
 ```bash
-pytest tests/ -v --cov=cog_rag_cognee --cov=api   # 43 tests, 92% coverage
+pytest tests/ -v --cov=cog_rag_cognee --cov=api   # 78 tests, 93% coverage
 ruff check .                                        # Lint
 ```
 
@@ -242,13 +276,20 @@ ruff check .                                        # Lint
 
 All settings via environment variables or `.env` file. See `.env.example` for the full list.
 
-Key settings:
-- `LLM_MODEL` — Ollama model (default: `llama3.1:8b`)
-- `EMBEDDING_MODEL` — embedding model (default: `nomic-embed-text:latest`)
-- `GRAPH_DATABASE_URL` — Neo4j connection (default: `neo4j://localhost:7687`)
-- `GRAPH_DATABASE_USERNAME` / `GRAPH_DATABASE_PASSWORD` — Neo4j credentials
-- `VECTOR_DB_PROVIDER` — vector store (default: `lancedb`)
-- `DOCLING_USE_GPU` — GPU acceleration for Docling (default: `false`)
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_MODEL` | `llama3.1:8b` | Ollama LLM model |
+| `LLM_ENDPOINT` | `http://localhost:11434/v1` | Ollama OpenAI-compatible API (must include `/v1`) |
+| `LLM_API_KEY` | `ollama` | Required by Cognee (any non-empty value for Ollama) |
+| `EMBEDDING_MODEL` | `nomic-embed-text:latest` | Ollama embedding model |
+| `EMBEDDING_ENDPOINT` | `http://localhost:11434/api/embed` | Ollama native embed API (must include `/api/embed`) |
+| `EMBEDDING_DIMENSIONS` | `768` | Embedding vector size |
+| `HUGGINGFACE_TOKENIZER` | `gpt2` | Tokenizer for chunk sizing |
+| `GRAPH_DATABASE_URL` | `neo4j://localhost:7687` | Neo4j bolt connection |
+| `GRAPH_DATABASE_PASSWORD` | `password` | Neo4j password |
+| `VECTOR_DB_PROVIDER` | `lancedb` | Vector store backend |
+| `ENABLE_BACKEND_ACCESS_CONTROL` | `false` | Cognee multi-user mode |
+| `DOCLING_USE_GPU` | `false` | GPU acceleration for document parsing |
 
 ## Deferred Features
 
