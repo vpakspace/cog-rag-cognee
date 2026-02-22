@@ -7,31 +7,29 @@ Semantic memory layer with Cognee SDK — 100% local stack.
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   Streamlit UI (:8506)               │
-│  [Upload] [Search & QA] [Graph Explorer] [Settings]  │
-└──────────────────────┬──────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────┐
-│                FastAPI REST API (:8508)               │
-│  /health  /ingest  /query  /search  /graph/stats     │
-└──────────────────────┬──────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────┐
-│              PipelineService (thin wrapper)           │
-│  add() → cognify() → search() — delegates to Cognee │
-└───┬──────────┬───────────┬──────────────────────────┘
-    │          │           │
-┌───▼───┐ ┌───▼────┐ ┌────▼─────┐
-│Cognee │ │Cognee  │ │ Cognee   │
-│  ECL  │ │ Dedup  │ │ Ontology │
-└───┬───┘ └───┬────┘ └────┬─────┘
-    │         │            │
-┌───▼─────────▼────────────▼──────────────────────────┐
-│              Cognee SDK (pip install cognee)          │
-│  Ollama LLM + Ollama Embeddings                      │
-│  Neo4j (graph) + LanceDB (vector)                    │
-└───┬──────────┬───────────┬──────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                   Streamlit UI (:8506)                    │
+│  [Upload] [Search & QA] [Graph Explorer] [Settings]      │
+└──────────────────────┬──────────────────────────────────┘
+                       │ httpx
+┌──────────────────────▼──────────────────────────────────┐
+│                FastAPI REST API (:8508)                   │
+│  /health  /ingest  /query  /search                       │
+│  /graph/stats  /graph/entities                           │
+└───────┬──────────────────────┬──────────────────────────┘
+        │                      │
+┌───────▼───────┐     ┌───────▼────────┐
+│PipelineService│     │  GraphClient   │
+│(Cognee wrapper│     │(Neo4j driver)  │
+│ add/cognify/  │     │ get_entities   │
+│ search/reset) │     │ get_relations  │
+└───┬───────────┘     │ get_stats      │
+    │                 └───────┬────────┘
+┌───▼─────────────────────────▼──────────────────────────┐
+│              Cognee SDK (pip install cognee)             │
+│  Ollama LLM + Ollama Embeddings                         │
+│  Neo4j (graph) + LanceDB (vector)                       │
+└───┬──────────┬───────────┬─────────────────────────────┘
     │          │           │
 ┌───▼───┐ ┌───▼────┐ ┌────▼─────┐
 │Ollama │ │ Neo4j  │ │ LanceDB  │
@@ -51,7 +49,7 @@ Semantic memory layer with Cognee SDK — 100% local stack.
 | Core SDK | Cognee (ECL pipeline, dedup, ontology) |
 | API | FastAPI |
 | UI | Streamlit (4 tabs, EN/RU) |
-| Graph Viz | PyVis |
+| Graph Viz | PyVis (interactive, entity type filter) |
 
 ## Prerequisites
 
@@ -94,7 +92,8 @@ streamlit run ui/streamlit_app.py --server.port 8506
 | POST | `/api/v1/ingest` | Upload + Extract + Cognify |
 | POST | `/api/v1/query` | RAG: search + generate answer |
 | POST | `/api/v1/search` | Search only (no generation) |
-| GET | `/api/v1/graph/stats` | Knowledge graph statistics |
+| GET | `/api/v1/graph/stats` | Live knowledge graph statistics |
+| GET | `/api/v1/graph/entities` | Graph nodes + edges for visualization |
 
 ### Example: Query
 
@@ -112,6 +111,16 @@ curl -X POST http://localhost:8508/api/v1/ingest \
   -d '{"text": "Cognee transforms documents into AI memory."}'
 ```
 
+### Example: Graph Entities
+
+```bash
+# All entities (default limit 200)
+curl http://localhost:8508/api/v1/graph/entities
+
+# Filter by type
+curl "http://localhost:8508/api/v1/graph/entities?entity_types=Person,Organization&limit=50"
+```
+
 ## CLI Ingestion
 
 ```bash
@@ -126,18 +135,19 @@ cog-rag-cognee/
 │   ├── config.py             # Pydantic Settings
 │   ├── models.py             # Domain models
 │   ├── service.py            # PipelineService (Cognee wrapper)
+│   ├── graph_client.py       # Neo4j driver wrapper (direct Cypher)
 │   ├── cognee_setup.py       # Cognee SDK configuration
 │   ├── ontology.py           # OWL/RDF ontology loader
 │   └── exceptions.py         # Custom exceptions
 ├── api/
 │   ├── app.py                # FastAPI factory + lifespan
-│   ├── routes.py             # REST endpoints
-│   └── deps.py               # Dependency injection
+│   ├── routes.py             # REST endpoints (6)
+│   └── deps.py               # Dependency injection (service + graph_client)
 ├── ui/
 │   ├── streamlit_app.py      # 4-tab UI
-│   ├── i18n.py               # EN/RU translations
+│   ├── i18n.py               # EN/RU translations (~80 keys)
 │   └── components/
-│       └── graph_viz.py      # PyVis visualization
+│       └── graph_viz.py      # PyVis visualization (entity type colors)
 ├── scripts/
 │   ├── ingest.py             # CLI ingestion
 │   └── pull_models.sh        # Ollama model download
@@ -145,18 +155,30 @@ cog-rag-cognee/
 │   └── example.owl           # Example domain ontology
 ├── data/                     # Sample documents (EN/RU)
 ├── benchmark/                # Evaluation questions
-├── tests/                    # 29 pytest tests
+├── tests/                    # 43 pytest tests, 92% coverage
 ├── docker-compose.yml        # Neo4j + Ollama
 ├── requirements.txt
 ├── pyproject.toml
 └── .env.example
 ```
 
-## Core Features (MVP)
+## Core Features
 
 1. **ECL Pipeline + Persistent Memory** — Extract-Cognify-Load via Cognee SDK
 2. **Semantic Deduplication** — exact hash + LLM fuzzy matching for entities
 3. **Ontology Integration** — OWL/RDF domain grounding
+4. **Graph Explorer** — interactive PyVis visualization with live Neo4j queries, entity type filter, stats dashboard
+
+## Graph Explorer
+
+The Graph Explorer tab provides interactive visualization of the knowledge graph built by Cognee:
+
+- **Live data** from Neo4j via direct Cypher queries (GraphClient)
+- **Entity type filter** — multiselect to show/hide Person, Organization, Location, etc.
+- **Stats dashboard** — node count, edge count, entity type breakdown
+- **PyVis rendering** — interactive drag-and-drop, zoom, hover tooltips
+- **Color coding** — Person (red), Organization (blue), Location (green), Date (yellow), Document (purple), Chunk (gray)
+- **Graceful fallback** — shows placeholder when Neo4j is unavailable
 
 ## Benchmark
 
@@ -165,8 +187,8 @@ cog-rag-cognee/
 ## Tests
 
 ```bash
-python -m pytest tests/ -v        # 29 tests
-python -m ruff check .            # Lint
+pytest tests/ -v --cov=cog_rag_cognee --cov=api   # 43 tests, 92% coverage
+ruff check .                                        # Lint
 ```
 
 ## Configuration
@@ -177,6 +199,7 @@ Key settings:
 - `LLM_MODEL` — Ollama model (default: `llama3.1:8b`)
 - `EMBEDDING_MODEL` — embedding model (default: `nomic-embed-text:latest`)
 - `GRAPH_DATABASE_URL` — Neo4j connection (default: `neo4j://localhost:7687`)
+- `GRAPH_DATABASE_USERNAME` / `GRAPH_DATABASE_PASSWORD` — Neo4j credentials
 - `VECTOR_DB_PROVIDER` — vector store (default: `lancedb`)
 
 ## Deferred Features
@@ -186,7 +209,6 @@ Key settings:
 - Iterative probing
 - Docling document parser (GPU)
 - Semantic cache
-
 
 ## License
 
