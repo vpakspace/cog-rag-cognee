@@ -1,5 +1,7 @@
 # cog-rag-cognee
 
+[![CI](https://github.com/vpakspace/cog-rag-cognee/actions/workflows/ci.yml/badge.svg)](https://github.com/vpakspace/cog-rag-cognee/actions/workflows/ci.yml)
+
 Semantic memory layer with Cognee SDK — 100% local stack.
 
 ## Architecture
@@ -184,7 +186,7 @@ Key settings:
 - Iterative probing
 - Docling document parser (GPU)
 - Semantic cache
-- CI/CD (GitHub Actions)
+
 
 ## License
 
