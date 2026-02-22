@@ -1,10 +1,11 @@
 """REST API endpoints."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from api.deps import get_service
+from api.deps import get_graph_client, get_service
+from cog_rag_cognee.graph_client import GraphClient
 from cog_rag_cognee.service import PipelineService
 
 router = APIRouter(prefix="/api/v1")
@@ -54,6 +55,29 @@ async def ingest(req: IngestRequest, svc: PipelineService = Depends(get_service)
 
 
 @router.get("/graph/stats")
-async def graph_stats():
-    """Return knowledge graph statistics."""
-    return {"nodes": 0, "edges": 0, "entity_types": {}}
+async def graph_stats(gc: GraphClient = Depends(get_graph_client)):
+    """Return knowledge graph statistics from Neo4j."""
+    try:
+        return gc.get_stats()
+    except Exception:
+        return {"nodes": 0, "edges": 0, "entity_types": {}}
+
+
+@router.get("/graph/entities")
+async def graph_entities(
+    limit: int = Query(default=200, ge=1, le=1000),
+    entity_types: str | None = Query(default=None),
+    gc: GraphClient = Depends(get_graph_client),
+):
+    """Return graph nodes and edges for visualization."""
+    types_list = (
+        [t.strip() for t in entity_types.split(",") if t.strip()]
+        if entity_types
+        else None
+    )
+    try:
+        nodes = gc.get_entities(limit=limit, entity_types=types_list)
+        edges = gc.get_relationships(limit=limit * 2, entity_types=types_list)
+        return {"nodes": nodes, "edges": edges}
+    except Exception:
+        return {"nodes": [], "edges": []}

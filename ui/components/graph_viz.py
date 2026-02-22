@@ -33,17 +33,30 @@ def render_graph(nodes: list[dict], edges: list[dict]) -> None:
         "Chunk": "#95a5a6",
     }
 
+    seen_nodes: set[str] = set()
     for node in nodes:
+        node_id = node.get("label", str(node.get("id", "")))
+        if node_id in seen_nodes:
+            continue
+        seen_nodes.add(node_id)
         color = color_map.get(node.get("type", ""), "#bdc3c7")
         net.add_node(
-            node["id"],
-            label=node.get("label", node["id"]),
+            node_id,
+            label=node_id,
             color=color,
-            title=f"{node.get('type', 'Unknown')}: {node.get('label', '')}",
+            title=f"{node.get('type', 'Unknown')}: {node_id}",
         )
 
     for edge in edges:
-        net.add_edge(edge["source"], edge["target"], label=edge.get("type", ""))
+        src = edge.get("source", "")
+        tgt = edge.get("target", "")
+        # Auto-add nodes referenced by edges but not in node list
+        for nid in (src, tgt):
+            if nid and nid not in seen_nodes:
+                seen_nodes.add(nid)
+                net.add_node(nid, label=nid, color="#bdc3c7")
+        if src and tgt:
+            net.add_edge(src, tgt, label=edge.get("type", ""))
 
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
         net.save_graph(f.name)

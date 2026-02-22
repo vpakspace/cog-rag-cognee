@@ -17,6 +17,18 @@ if "cognee" not in sys.modules:
     sys.modules["cognee"] = _cognee_stub
     sys.modules["cognee.prune"] = _cognee_stub.prune
 
+# Stub neo4j driver so graph_client.py can be imported without real neo4j package
+if "neo4j" not in sys.modules:
+    _neo4j_stub = types.ModuleType("neo4j")
+
+    def _fake_driver(*_a, **_kw):
+        return None
+
+    _neo4j_stub.GraphDatabase = type(  # type: ignore[attr-defined]
+        "GraphDatabase", (), {"driver": staticmethod(_fake_driver)}
+    )
+    sys.modules["neo4j"] = _neo4j_stub
+
 # Set default env vars before any Settings import
 os.environ.setdefault("LLM_PROVIDER", "ollama")
 os.environ.setdefault("LLM_MODEL", "llama3.1:8b")

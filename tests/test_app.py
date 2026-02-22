@@ -30,11 +30,31 @@ def mock_service():
 
 
 @pytest.fixture
-def client(mock_service):
-    """Create test client with mocked service."""
-    from api.deps import set_service
+def mock_graph_client():
+    """Create a mock GraphClient."""
+    gc = MagicMock()
+    gc.get_stats.return_value = {
+        "nodes": 10,
+        "edges": 15,
+        "entity_types": {"Person": 5, "Organization": 3, "Location": 2},
+    }
+    gc.get_entities.return_value = [
+        {"id": 1, "label": "Alice", "type": "Person"},
+        {"id": 2, "label": "Acme Corp", "type": "Organization"},
+    ]
+    gc.get_relationships.return_value = [
+        {"source": "Alice", "target": "Acme Corp", "type": "WORKS_AT"},
+    ]
+    return gc
+
+
+@pytest.fixture
+def client(mock_service, mock_graph_client):
+    """Create test client with mocked service and graph client."""
+    from api.deps import set_graph_client, set_service
 
     set_service(mock_service)
+    set_graph_client(mock_graph_client)
 
     from api.app import create_app
 
@@ -44,6 +64,7 @@ def client(mock_service):
 
     # Cleanup
     set_service(None)
+    set_graph_client(None)
 
 
 def test_health(client):
@@ -91,13 +112,41 @@ def test_ingest(client):
 
 
 def test_graph_stats(client):
-    """Graph stats endpoint returns node/edge counts."""
+    """Graph stats endpoint returns live node/edge counts."""
     resp = client.get("/api/v1/graph/stats")
     assert resp.status_code == 200
     data = resp.json()
-    assert "nodes" in data
-    assert "edges" in data
-    assert "entity_types" in data
+    assert data["nodes"] == 10
+    assert data["edges"] == 15
+    assert data["entity_types"]["Person"] == 5
+
+
+def test_graph_entities(client):
+    """Graph entities endpoint returns nodes and edges."""
+    resp = client.get("/api/v1/graph/entities")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["nodes"]) == 2
+    assert data["nodes"][0]["label"] == "Alice"
+    assert len(data["edges"]) == 1
+    assert data["edges"][0]["type"] == "WORKS_AT"
+
+
+def test_graph_entities_with_filter(client, mock_graph_client):
+    """Graph entities endpoint passes entity type filter."""
+    client.get("/api/v1/graph/entities?entity_types=Person,Organization&limit=50")
+    mock_graph_client.get_entities.assert_called_once_with(
+        limit=50, entity_types=["Person", "Organization"]
+    )
+
+
+def test_graph_stats_fallback(client, mock_graph_client):
+    """Graph stats returns zeros when Neo4j is unavailable."""
+    mock_graph_client.get_stats.side_effect = Exception("Connection refused")
+    resp = client.get("/api/v1/graph/stats")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["nodes"] == 0
 
 
 def test_query_custom_mode(client, mock_service):

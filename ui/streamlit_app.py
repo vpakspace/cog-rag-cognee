@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 
+import httpx
 import streamlit as st
 
 from cog_rag_cognee.cognee_setup import apply_cognee_env
@@ -95,7 +96,58 @@ with tab_search:
 # --- Tab 3: Graph Explorer ---
 with tab_graph:
     st.header(t("graph_header"))
-    render_graph([], [])
+
+    settings = get_settings()
+    api_base = f"http://{settings.api_host}:{settings.api_port}/api/v1"
+
+    # Fetch stats for sidebar filter
+    try:
+        stats_resp = httpx.get(f"{api_base}/graph/stats", timeout=5)
+        stats_data = stats_resp.json() if stats_resp.status_code == 200 else {}
+    except Exception:
+        stats_data = {}
+
+    entity_types_available = list(stats_data.get("entity_types", {}).keys())
+
+    # Sidebar filter
+    selected_types = st.multiselect(
+        t("graph_filter"),
+        options=entity_types_available,
+        default=entity_types_available,
+    )
+
+    # Stats display
+    if stats_data.get("nodes", 0) > 0:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric(t("graph_nodes"), stats_data.get("nodes", 0))
+        with col2:
+            st.metric(t("graph_edges"), stats_data.get("edges", 0))
+
+        if stats_data.get("entity_types"):
+            with st.expander(t("graph_entity_breakdown")):
+                for etype, count in stats_data["entity_types"].items():
+                    st.text(f"{etype}: {count}")
+
+    # Load graph data
+    if st.button(t("graph_load")) or stats_data.get("nodes", 0) > 0:
+        with st.spinner(t("graph_loading")):
+            try:
+                params = {"limit": 200}
+                if selected_types and selected_types != entity_types_available:
+                    params["entity_types"] = ",".join(selected_types)
+                resp = httpx.get(
+                    f"{api_base}/graph/entities", params=params, timeout=10
+                )
+                if resp.status_code == 200:
+                    graph_data = resp.json()
+                    nodes = graph_data.get("nodes", [])
+                    edges = graph_data.get("edges", [])
+                    render_graph(nodes, edges)
+                else:
+                    st.warning(t("graph_error"))
+            except Exception:
+                st.warning(t("graph_error"))
 
 # --- Tab 4: Settings ---
 with tab_settings:
