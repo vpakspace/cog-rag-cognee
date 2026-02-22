@@ -70,6 +70,35 @@ async def test_query_full_pipeline(mock_cognee):
 
 
 @pytest.mark.asyncio
+async def test_add_file_uses_docling(mock_cognee, tmp_path):
+    """add_file delegates to DoclingLoader then calls cognee.add."""
+    f = tmp_path / "doc.txt"
+    f.write_text("File content via loader")
+
+    from cog_rag_cognee.service import PipelineService
+
+    svc = PipelineService()
+    result = await svc.add_file(str(f))
+
+    mock_cognee.add.assert_called_once_with("File content via loader", dataset_name="main")
+    assert result["status"] == "added"
+    assert result["chars"] == len("File content via loader")
+
+
+@pytest.mark.asyncio
+async def test_add_bytes(mock_cognee):
+    """add_bytes converts bytes via DoclingLoader then calls cognee.add."""
+    from cog_rag_cognee.service import PipelineService
+
+    svc = PipelineService()
+    result = await svc.add_bytes(b"Bytes content", "note.txt")
+
+    mock_cognee.add.assert_called_once_with("Bytes content", dataset_name="main")
+    assert result["status"] == "added"
+    assert result["file"] == "note.txt"
+
+
+@pytest.mark.asyncio
 async def test_reset(mock_cognee):
     from cog_rag_cognee.service import PipelineService
 

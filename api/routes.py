@@ -1,7 +1,7 @@
 """REST API endpoints."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from pydantic import BaseModel, Field
 
 from api.deps import get_graph_client, get_service
@@ -51,6 +51,19 @@ async def ingest(req: IngestRequest, svc: PipelineService = Depends(get_service)
     """Ingest text and run Cognee ECL pipeline."""
     result = await svc.add_text(req.text, dataset_name=req.dataset_name)
     cognify_result = await svc.cognify(dataset_name=req.dataset_name)
+    return {"ingest": result, "cognify": str(cognify_result)}
+
+
+@router.post("/ingest-file")
+async def ingest_file(
+    file: UploadFile = File(...),
+    dataset_name: str = Form("main"),
+    svc: PipelineService = Depends(get_service),
+):
+    """Ingest an uploaded file (PDF, DOCX, TXT, etc.) and run Cognee pipeline."""
+    data = await file.read()
+    result = await svc.add_bytes(data, file.filename or "upload.txt", dataset_name)
+    cognify_result = await svc.cognify(dataset_name=dataset_name)
     return {"ingest": result, "cognify": str(cognify_result)}
 
 

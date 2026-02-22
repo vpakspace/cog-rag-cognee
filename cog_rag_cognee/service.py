@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 import cognee
 
+from cog_rag_cognee.config import get_settings
+from cog_rag_cognee.docling_loader import DoclingLoader
 from cog_rag_cognee.models import QAResult, SearchResult
 
 logger = logging.getLogger(__name__)
@@ -21,12 +24,28 @@ class PipelineService:
         return {"status": "added", "chars": len(text), "dataset": dataset_name}
 
     async def add_file(self, file_path: str, dataset_name: str = "main") -> dict[str, Any]:
-        """Add file content to Cognee."""
-        with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        await cognee.add(content, dataset_name=dataset_name)
-        logger.info("Added file '%s' (%d chars)", file_path, len(content))
-        return {"status": "added", "file": file_path, "chars": len(content)}
+        """Add file content to Cognee via DoclingLoader."""
+        settings = get_settings()
+        loader = DoclingLoader(use_gpu=settings.docling_use_gpu)
+        result = loader.load(file_path)
+        await cognee.add(result.markdown, dataset_name=dataset_name)
+        logger.info("Added file '%s' (%d chars)", file_path, len(result.markdown))
+        return {
+            "status": "added",
+            "file": str(Path(file_path).name),
+            "chars": len(result.markdown),
+        }
+
+    async def add_bytes(
+        self, data: bytes, filename: str, dataset_name: str = "main"
+    ) -> dict[str, Any]:
+        """Add uploaded file bytes to Cognee via DoclingLoader."""
+        settings = get_settings()
+        loader = DoclingLoader(use_gpu=settings.docling_use_gpu)
+        result = loader.load_bytes(data, filename)
+        await cognee.add(result.markdown, dataset_name=dataset_name)
+        logger.info("Added bytes '%s' (%d chars)", filename, len(result.markdown))
+        return {"status": "added", "file": filename, "chars": len(result.markdown)}
 
     async def cognify(self, dataset_name: str | None = None) -> dict[str, Any]:
         """Run Cognee ECL pipeline: extract entities, build graph, embed."""

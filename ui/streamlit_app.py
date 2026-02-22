@@ -55,13 +55,20 @@ with tab_upload:
                 st.success(t("upload_success"))
                 st.json({"ingest": result, "cognify": str(cognify_result)})
             elif uploaded_file is not None:
-                content = uploaded_file.read().decode("utf-8", errors="ignore")
-                result = asyncio.run(svc.add_text(content))
-                cognify_result = asyncio.run(svc.cognify())
-                st.success(t("upload_success"))
-                st.json({"ingest": result, "cognify": str(cognify_result)})
+                try:
+                    file_bytes = uploaded_file.read()
+                    result = asyncio.run(
+                        svc.add_bytes(file_bytes, uploaded_file.name)
+                    )
+                    cognify_result = asyncio.run(svc.cognify())
+                    st.success(t("upload_success"))
+                    st.json({"ingest": result, "cognify": str(cognify_result)})
+                except ImportError:
+                    st.error(t("upload_docling_missing"))
+                except Exception as exc:
+                    st.error(f"{t('upload_error')}: {exc}")
             else:
-                st.warning("Please upload a file or enter text.")
+                st.warning(t("upload_no_input"))
 
 # --- Tab 2: Search & Q&A ---
 with tab_search:

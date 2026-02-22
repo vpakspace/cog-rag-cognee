@@ -27,3 +27,9 @@ def test_ollama_base_url():
     s = Settings()
     assert s.ollama_base_url == s.llm_endpoint
     assert s.ollama_base_url == "http://localhost:11434"
+
+
+def test_docling_use_gpu_default():
+    """docling_use_gpu defaults to False."""
+    s = Settings()
+    assert s.docling_use_gpu is False

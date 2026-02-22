@@ -25,6 +25,7 @@ def mock_service():
     )
     svc.search = AsyncMock(return_value=[])
     svc.add_text = AsyncMock(return_value={"status": "added", "chars": 10, "dataset": "main"})
+    svc.add_bytes = AsyncMock(return_value={"status": "added", "file": "test.txt", "chars": 12})
     svc.cognify = AsyncMock(return_value={"main": "completed"})
     return svc
 
@@ -160,3 +161,31 @@ def test_ingest_custom_dataset(client, mock_service):
     client.post("/api/v1/ingest", json={"text": "data", "dataset_name": "custom"})
     mock_service.add_text.assert_called_once_with("data", dataset_name="custom")
     mock_service.cognify.assert_called_once_with(dataset_name="custom")
+
+
+def test_ingest_file_txt(client, mock_service):
+    """Ingest-file endpoint accepts multipart file upload."""
+    resp = client.post(
+        "/api/v1/ingest-file",
+        files={"file": ("test.txt", b"Hello from file", "text/plain")},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "ingest" in data
+    assert "cognify" in data
+    mock_service.add_bytes.assert_called_once_with(
+        b"Hello from file", "test.txt", "main"
+    )
+
+
+def test_ingest_file_custom_dataset(client, mock_service):
+    """Ingest-file endpoint passes custom dataset name."""
+    resp = client.post(
+        "/api/v1/ingest-file",
+        files={"file": ("doc.pdf", b"%PDF fake", "application/pdf")},
+        data={"dataset_name": "papers"},
+    )
+    assert resp.status_code == 200
+    mock_service.add_bytes.assert_called_once_with(
+        b"%PDF fake", "doc.pdf", "papers"
+    )

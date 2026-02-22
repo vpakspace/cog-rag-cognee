@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     # Storage
     storage_root_dir: str = "./cognee_data"
 
+    # Docling
+    docling_use_gpu: bool = False
+
     # API
     api_key: str = ""
     api_host: str = "0.0.0.0"

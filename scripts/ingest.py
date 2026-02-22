@@ -1,8 +1,9 @@
-"""CLI ingestion script."""
+"""CLI ingestion script with Docling document loader support."""
 from __future__ import annotations
 
+import argparse
 import asyncio
-import sys
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -14,8 +15,12 @@ from cog_rag_cognee.config import get_settings  # noqa: E402
 from cog_rag_cognee.service import PipelineService  # noqa: E402
 
 
-async def main(file_paths: list[str]) -> None:
+async def main(file_paths: list[str], use_gpu: bool = False) -> None:
     settings = get_settings()
+
+    if use_gpu:
+        os.environ["DOCLING_USE_GPU"] = "true"
+
     apply_cognee_env(settings)
 
     svc = PipelineService()
@@ -27,9 +32,13 @@ async def main(file_paths: list[str]) -> None:
             continue
 
         print(f"Ingesting: {fp}")
-        content = path.read_text(encoding="utf-8")
-        await svc.add_text(content)
-        print(f"  Added {len(content)} chars")
+        try:
+            result = await svc.add_file(str(path))
+            print(f"  Added {result['chars']} chars")
+        except ImportError as exc:
+            print(f"  ERROR: {exc}")
+        except Exception as exc:
+            print(f"  ERROR: {exc}")
 
     print("Running cognify...")
     result = await svc.cognify()
@@ -38,7 +47,10 @@ async def main(file_paths: list[str]) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python scripts/ingest.py <file1> [file2] ...")
-        sys.exit(1)
-    asyncio.run(main(sys.argv[1:]))
+    parser = argparse.ArgumentParser(description="Ingest documents into Cognee")
+    parser.add_argument("files", nargs="+", help="File paths to ingest")
+    parser.add_argument(
+        "--use-gpu", action="store_true", help="Enable GPU acceleration for Docling"
+    )
+    args = parser.parse_args()
+    asyncio.run(main(args.files, use_gpu=args.use_gpu))

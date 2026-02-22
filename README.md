@@ -51,6 +51,29 @@ Semantic memory layer with Cognee SDK — 100% local stack.
 | UI | Streamlit (4 tabs, EN/RU) |
 | Graph Viz | PyVis (interactive, entity type filter) |
 
+## Document Formats
+
+| Format | Extension | Requires Docling |
+|--------|-----------|:----------------:|
+| Plain text | `.txt` | No |
+| Markdown | `.md` | No |
+| PDF | `.pdf` | Yes |
+| Word | `.docx` | Yes |
+| PowerPoint | `.pptx` | Yes |
+| Excel | `.xlsx` | Yes |
+| HTML | `.html` | Yes |
+
+Docling is optional (~1-2 GB). Plain text works without it.
+
+```bash
+# Install Docling for binary document support
+pip install docling
+
+# Enable GPU acceleration (CUDA/MPS)
+export DOCLING_USE_GPU=true
+# or use CLI flag: python scripts/ingest.py --use-gpu doc.pdf
+```
+
 ## Prerequisites
 
 - Python 3.10+
@@ -89,7 +112,8 @@ streamlit run ui/streamlit_app.py --server.port 8506
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/v1/health` | Health check |
-| POST | `/api/v1/ingest` | Upload + Extract + Cognify |
+| POST | `/api/v1/ingest` | Upload text + Cognify |
+| POST | `/api/v1/ingest-file` | Upload file (multipart) + Cognify |
 | POST | `/api/v1/query` | RAG: search + generate answer |
 | POST | `/api/v1/search` | Search only (no generation) |
 | GET | `/api/v1/graph/stats` | Live knowledge graph statistics |
@@ -103,12 +127,20 @@ curl -X POST http://localhost:8508/api/v1/query \
   -d '{"text": "What is Cognee?", "mode": "GRAPH_COMPLETION"}'
 ```
 
-### Example: Ingest
+### Example: Ingest Text
 
 ```bash
 curl -X POST http://localhost:8508/api/v1/ingest \
   -H "Content-Type: application/json" \
   -d '{"text": "Cognee transforms documents into AI memory."}'
+```
+
+### Example: Ingest File
+
+```bash
+curl -X POST http://localhost:8508/api/v1/ingest-file \
+  -F "file=@report.pdf" \
+  -F "dataset_name=papers"
 ```
 
 ### Example: Graph Entities
@@ -124,7 +156,11 @@ curl "http://localhost:8508/api/v1/graph/entities?entity_types=Person,Organizati
 ## CLI Ingestion
 
 ```bash
+# Plain text (no Docling needed)
 python scripts/ingest.py data/sample_en.txt data/sample_ru.txt
+
+# PDF/DOCX with GPU acceleration
+python scripts/ingest.py report.pdf --use-gpu
 ```
 
 ## Project Structure
@@ -136,12 +172,13 @@ cog-rag-cognee/
 │   ├── models.py             # Domain models
 │   ├── service.py            # PipelineService (Cognee wrapper)
 │   ├── graph_client.py       # Neo4j driver wrapper (direct Cypher)
+│   ├── docling_loader.py     # Document loader (Docling, optional GPU)
 │   ├── cognee_setup.py       # Cognee SDK configuration
 │   ├── ontology.py           # OWL/RDF ontology loader
 │   └── exceptions.py         # Custom exceptions
 ├── api/
 │   ├── app.py                # FastAPI factory + lifespan
-│   ├── routes.py             # REST endpoints (6)
+│   ├── routes.py             # REST endpoints (7)
 │   └── deps.py               # Dependency injection (service + graph_client)
 ├── ui/
 │   ├── streamlit_app.py      # 4-tab UI
@@ -211,13 +248,13 @@ Key settings:
 - `GRAPH_DATABASE_URL` — Neo4j connection (default: `neo4j://localhost:7687`)
 - `GRAPH_DATABASE_USERNAME` / `GRAPH_DATABASE_PASSWORD` — Neo4j credentials
 - `VECTOR_DB_PROVIDER` — vector store (default: `lancedb`)
+- `DOCLING_USE_GPU` — GPU acceleration for Docling (default: `false`)
 
 ## Deferred Features
 
 - BM25 keyword search (tantivy / SQLite FTS5)
 - Memify graph optimization
 - Iterative probing
-- Docling document parser (GPU)
 - Semantic cache
 
 ## License
