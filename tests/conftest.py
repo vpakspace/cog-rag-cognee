@@ -14,8 +14,38 @@ if "cognee" not in sys.modules:
     _cognee_stub.prune = types.ModuleType("cognee.prune")
     _cognee_stub.prune.prune_data = None
     _cognee_stub.prune.prune_system = None
+    # Stub deep submodule path for SearchType enum used by service.py
+    import enum
+
+    class _FakeSearchType(str, enum.Enum):
+        SUMMARIES = "SUMMARIES"
+        CHUNKS = "CHUNKS"
+        INSIGHTS = "INSIGHTS"
+        RAG_COMPLETION = "RAG_COMPLETION"
+        GRAPH_COMPLETION = "GRAPH_COMPLETION"
+        GRAPH_SUMMARY_COMPLETION = "GRAPH_SUMMARY_COMPLETION"
+        TRIPLET_COMPLETION = "TRIPLET_COMPLETION"
+
+    _search_types_mod = types.ModuleType("cognee.modules.search.types.SearchType")
+    _search_types_mod.SearchType = _FakeSearchType  # type: ignore[attr-defined]
+
+    _types_mod = types.ModuleType("cognee.modules.search.types")
+    _types_mod.SearchType = _search_types_mod  # type: ignore[attr-defined]
+
+    _search_mod = types.ModuleType("cognee.modules.search")
+    _search_mod.types = _types_mod  # type: ignore[attr-defined]
+
+    _modules_mod = types.ModuleType("cognee.modules")
+    _modules_mod.search = _search_mod  # type: ignore[attr-defined]
+
+    _cognee_stub.modules = _modules_mod  # type: ignore[attr-defined]
+
     sys.modules["cognee"] = _cognee_stub
     sys.modules["cognee.prune"] = _cognee_stub.prune
+    sys.modules["cognee.modules"] = _modules_mod
+    sys.modules["cognee.modules.search"] = _search_mod
+    sys.modules["cognee.modules.search.types"] = _types_mod
+    sys.modules["cognee.modules.search.types.SearchType"] = _search_types_mod
 
 # Stub neo4j driver so graph_client.py can be imported without real neo4j package
 if "neo4j" not in sys.modules:

@@ -99,6 +99,25 @@ async def test_add_bytes(mock_cognee):
 
 
 @pytest.mark.asyncio
+async def test_search_v052_list_format():
+    """v0.5.2 returns list[list[dict]] from cognee.search."""
+    with patch("cog_rag_cognee.service.cognee") as mock:
+        mock.search = AsyncMock(return_value=[
+            [{"id": "abc", "text": "Cognee is a knowledge engine", "type": "IndexSchema"}],
+            [{"id": "def", "text": "It uses graphs", "type": "IndexSchema"}],
+        ])
+        from cog_rag_cognee.service import PipelineService
+
+        svc = PipelineService()
+        results = await svc.search("What is Cognee?")
+
+    assert len(results) == 2
+    assert results[0].content == "Cognee is a knowledge engine"
+    assert results[1].content == "It uses graphs"
+    assert results[0].score == 0.5  # default when no relevance_score
+
+
+@pytest.mark.asyncio
 async def test_reset(mock_cognee):
     from cog_rag_cognee.service import PipelineService
 

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import cognee
+from cognee.modules.search.types.SearchType import SearchType
 
 from cog_rag_cognee.config import get_settings
 from cog_rag_cognee.docling_loader import DoclingLoader
@@ -59,23 +60,63 @@ class PipelineService:
     async def search(
         self,
         query: str,
-        search_type: str = "GRAPH_COMPLETION",
+        search_type: str = "CHUNKS",
         limit: int = 5,
     ) -> list[SearchResult]:
         """Search Cognee knowledge graph."""
-        raw_results = await cognee.search(query, search_type=search_type, limit=limit)
+        st = SearchType(search_type) if isinstance(search_type, str) else search_type
+        raw_results = await cognee.search(query, query_type=st, top_k=limit)
         results = []
         for r in raw_results:
-            content = r.content if hasattr(r, "content") else str(r)
-            score = r.relevance_score if hasattr(r, "relevance_score") else 0.5
-            score = max(0.0, min(1.0, float(score)))
+            content, score = self._extract_result(r)
             results.append(SearchResult(content=content, score=score))
         return results
+
+    @staticmethod
+    def _extract_result(r: Any) -> tuple[str, float]:
+        """Extract text content and score from a Cognee search result.
+
+        Cognee v0.5.2 returns heterogeneous types depending on SearchType:
+        - CHUNKS/SUMMARIES: list[dict] with 'text' key
+        - RAG_COMPLETION: list[str]
+        - Object with .content / .relevance_score attributes
+        """
+        # v0.5.2: result is a list (of dicts or strings)
+        if isinstance(r, list):
+            parts = []
+            for item in r:
+                if isinstance(item, dict) and "text" in item:
+                    parts.append(item["text"])
+                elif isinstance(item, str):
+                    parts.append(item)
+                else:
+                    parts.append(str(item))
+            return "\n".join(parts) if parts else "", 0.5
+
+        # Older SDK: object with .content attribute
+        if hasattr(r, "content"):
+            raw = r.content
+            if isinstance(raw, list):
+                parts = []
+                for item in raw:
+                    if isinstance(item, dict) and "text" in item:
+                        parts.append(item["text"])
+                    elif isinstance(item, str):
+                        parts.append(item)
+                    else:
+                        parts.append(str(item))
+                content = "\n".join(parts)
+            else:
+                content = str(raw)
+            score = r.relevance_score if hasattr(r, "relevance_score") else 0.5
+            return content, max(0.0, min(1.0, float(score)))
+
+        return str(r), 0.5
 
     async def query(
         self,
         question: str,
-        search_type: str = "GRAPH_COMPLETION",
+        search_type: str = "CHUNKS",
         limit: int = 5,
     ) -> QAResult:
         """Full RAG pipeline: search + format answer."""
