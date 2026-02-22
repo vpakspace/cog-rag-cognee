@@ -1,0 +1,5 @@
+Cognee is a knowledge engine that transforms documents into AI memory.
+It uses knowledge graphs to store entities and their relationships.
+Neo4j is used as the graph database backend for persistent storage.
+LanceDB provides embedded vector search without requiring Docker.
+Ollama enables local LLM inference with models like Llama 3.1.

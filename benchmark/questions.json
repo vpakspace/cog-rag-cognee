@@ -1,0 +1,12 @@
+[
+  {"question": "What is Cognee?", "expected_keywords": ["knowledge", "engine", "memory"], "category": "simple", "lang": "en"},
+  {"question": "What database stores the knowledge graph?", "expected_keywords": ["neo4j", "graph"], "category": "simple", "lang": "en"},
+  {"question": "How does vector search work without Docker?", "expected_keywords": ["lancedb", "embedded"], "category": "simple", "lang": "en"},
+  {"question": "What model does Ollama use?", "expected_keywords": ["llama", "3.1"], "category": "simple", "lang": "en"},
+  {"question": "What is the relationship between Cognee and Neo4j?", "expected_keywords": ["graph", "storage", "entities"], "category": "relation", "lang": "en"},
+  {"question": "Что такое Cognee?", "expected_keywords": ["знаний", "память", "документы"], "category": "simple", "lang": "ru"},
+  {"question": "Какая база данных хранит граф знаний?", "expected_keywords": ["neo4j", "графовая"], "category": "simple", "lang": "ru"},
+  {"question": "Как работает векторный поиск без Docker?", "expected_keywords": ["lancedb", "встроенный"], "category": "simple", "lang": "ru"},
+  {"question": "Какие модели использует Ollama?", "expected_keywords": ["llama", "3.1"], "category": "simple", "lang": "ru"},
+  {"question": "Какая связь между Cognee и Neo4j?", "expected_keywords": ["граф", "хранения", "сущност"], "category": "relation", "lang": "ru"}
+]
