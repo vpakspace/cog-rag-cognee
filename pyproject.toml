@@ -1,0 +1,16 @@
+[project]
+name = "cog-rag-cognee"
+version = "0.1.0"
+description = "Semantic memory layer with Cognee SDK — 100% local stack"
+requires-python = ">=3.10,<3.14"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
