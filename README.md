@@ -150,6 +150,7 @@ cog-rag-cognee/
 │       └── graph_viz.py      # PyVis visualization (entity type colors)
 ├── scripts/
 │   ├── ingest.py             # CLI ingestion
+│   ├── run_benchmark.py      # Benchmark runner (10q × 4 modes)
 │   └── pull_models.sh        # Ollama model download
 ├── ontologies/
 │   └── example.owl           # Example domain ontology
@@ -182,7 +183,16 @@ The Graph Explorer tab provides interactive visualization of the knowledge graph
 
 ## Benchmark
 
-10 questions (5 EN + 5 RU) in `benchmark/questions.json`. Categories: simple, relation.
+10 questions (5 EN + 5 RU) × 4 Cognee search modes = 40 evaluations.
+
+Evaluation uses keyword overlap judge with cross-language concept map (no external API needed).
+
+```bash
+# Requires running services: Ollama, Neo4j, ingested data
+python scripts/run_benchmark.py
+```
+
+Results are saved to `benchmark/results.json`. Questions are in `benchmark/questions.json`.
 
 ## Tests
 
