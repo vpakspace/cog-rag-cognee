@@ -490,6 +490,52 @@ def test_error_code_attributes():
     assert OllamaError.code == "ERR_OLLAMA"
 
 
+def test_ingest_file_empty_rejected(client):
+    """Ingest-file rejects 0-byte file uploads."""
+    resp = client.post(
+        "/api/v1/ingest-file",
+        files={"file": ("empty.txt", b"", "text/plain")},
+    )
+    assert resp.status_code == 422
+    assert "empty" in resp.json()["detail"].lower()
+
+
+def test_ingest_file_reserved_filename(client, mock_service):
+    """Ingest-file prefixes Windows reserved filenames."""
+    resp = client.post(
+        "/api/v1/ingest-file",
+        files={"file": ("CON.txt", b"data", "text/plain")},
+    )
+    assert resp.status_code == 200
+    filename = mock_service.add_bytes.call_args[0][1]
+    # Reserved name must be escaped (not bare "CON")
+    assert filename.split(".")[0].upper() != "CON"
+
+
+def test_query_null_bytes_stripped(client, mock_service):
+    """Null bytes are stripped from query text."""
+    resp = client.post("/api/v1/query", json={"text": "hello\x00world"})
+    assert resp.status_code == 200
+    call_text = mock_service.query.call_args[0][0]
+    assert "\x00" not in call_text
+
+
+def test_ingest_null_bytes_stripped(client, mock_service):
+    """Null bytes are stripped from ingest text."""
+    resp = client.post("/api/v1/ingest", json={"text": "hello\x00world"})
+    assert resp.status_code == 200
+    call_text = mock_service.add_text.call_args[0][0]
+    assert "\x00" not in call_text
+
+
+def test_security_headers(client):
+    """Every response includes security headers."""
+    resp = client.get("/api/v1/liveness")
+    assert resp.headers["x-content-type-options"] == "nosniff"
+    assert resp.headers["x-frame-options"] == "DENY"
+    assert resp.headers["cache-control"] == "no-store"
+
+
 def test_exception_handler_shows_details_in_debug(mock_service, mock_graph_client):
     """Error handler shows full details when DEBUG=true."""
     import os

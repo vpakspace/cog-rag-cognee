@@ -38,11 +38,16 @@ router = APIRouter(
 
 _DATASET_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 _ENTITY_TYPE_RE = re.compile(r"^[a-zA-Z0-9_]+$")
+_RESERVED_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
 
 
 def _strip_text(v: str) -> str:
-    """Strip whitespace and reject blank text."""
-    v = v.strip()
+    """Strip whitespace, remove null bytes, and reject blank text."""
+    v = v.replace("\x00", "").strip()
     if not v:
         raise ValueError("text must not be blank")
     return v
@@ -158,16 +163,20 @@ async def ingest_file(
     if not _DATASET_RE.match(dataset_name):
         raise HTTPException(status_code=422, detail="Invalid dataset_name")
 
-    # Enforce file size limit
+    # Enforce non-empty and file size limit
     settings = get_settings()
     data = await file.read()
+    if len(data) == 0:
+        raise HTTPException(status_code=422, detail="File is empty")
     if len(data) > settings.max_upload_bytes:
         mb = settings.max_upload_bytes // (1024 * 1024)
         raise HTTPException(status_code=413, detail=f"File too large (max {mb} MB)")
 
-    # Sanitize filename: strip path components, remove unsafe chars
+    # Sanitize filename: strip path components, remove unsafe chars, block reserved names
     raw_name = (file.filename or "upload.bin").rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
     filename = re.sub(r"[^\w.\-]", "_", raw_name).lstrip(".") or "upload.bin"
+    if filename.split(".")[0].upper() in _RESERVED_NAMES:
+        filename = f"_{filename}"
 
     result = await svc.add_bytes(data, filename, dataset_name)
     cognify_result = await svc.cognify(dataset_name=dataset_name)
