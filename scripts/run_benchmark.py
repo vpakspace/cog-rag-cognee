@@ -14,7 +14,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from dotenv import load_dotenv
 
@@ -224,7 +224,7 @@ def _print_summary(
     # Save results.json
     out_path = os.path.join(BENCH_DIR, "results.json")
     out_data = {
-        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+        "timestamp": datetime.now(tz=UTC).isoformat(),
         "llm_model": settings.llm_model,
         "embedding_model": settings.embedding_model,
         "modes": MODES,

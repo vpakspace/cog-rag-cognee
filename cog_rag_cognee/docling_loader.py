@@ -68,7 +68,7 @@ class DoclingLoader:
                 raise ImportError(
                     "Docling is required for binary document formats. "
                     "Install it with: pip install docling"
-                )
+                ) from None
 
             pipeline_options = PdfPipelineOptions()
 

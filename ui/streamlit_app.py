@@ -214,7 +214,7 @@ with tab_settings:
     )
 
     st.markdown("---")
-    if st.button(t("settings_clear"), type="secondary"):
+    if st.button(t("settings_clear"), type="secondary"):  # noqa: SIM102
         if st.checkbox(t("settings_clear_confirm")):
             try:
                 resp = httpx.post(
