@@ -252,11 +252,24 @@ def test_filename_sanitized(client, mock_service):
 
 
 def test_reset(client, mock_service):
-    """Reset endpoint calls service.reset()."""
-    resp = client.post("/api/v1/reset")
+    """Reset endpoint calls service.reset() with confirmation."""
+    resp = client.post("/api/v1/reset", json={"confirm": True})
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
     mock_service.reset.assert_called_once()
+
+
+def test_reset_requires_confirmation(client):
+    """Reset endpoint rejects requests without confirm=true."""
+    resp = client.post("/api/v1/reset", json={})
+    assert resp.status_code == 400
+    assert "confirm" in resp.json()["detail"].lower()
+
+
+def test_reset_rejects_false_confirmation(client):
+    """Reset endpoint rejects confirm=false."""
+    resp = client.post("/api/v1/reset", json={"confirm": False})
+    assert resp.status_code == 400
 
 
 def test_exception_handler_ingestion_error(client, mock_service):

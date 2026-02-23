@@ -138,8 +138,17 @@ async def graph_entities(
         return GraphEntitiesResponse()
 
 
+class ResetRequest(BaseModel):
+    """Request body for /reset endpoint."""
+
+    confirm: bool = False
+
+
 @router.post("/reset")
-async def reset(svc: PipelineService = Depends(get_service)):
-    """Reset all Cognee data."""
+async def reset(req: ResetRequest, svc: PipelineService = Depends(get_service)):
+    """Reset all Cognee data. Requires confirm=true."""
+    if not req.confirm:
+        raise HTTPException(status_code=400, detail="Set confirm=true to reset all data")
+    logger.warning("DATA RESET triggered via API")
     await svc.reset()
     return {"status": "ok"}
