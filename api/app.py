@@ -131,6 +131,11 @@ def create_app() -> FastAPI:
 
     # CORS
     origins = [o.strip() for o in settings.cors_origins.split(",")]
+    if not settings.debug and "*" in origins:
+        logger.warning("CORS wildcard '*' is not allowed in production — removing it")
+        origins = [o for o in origins if o != "*"]
+        if not origins:
+            origins = ["http://localhost:8506"]
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,

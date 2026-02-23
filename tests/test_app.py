@@ -693,3 +693,33 @@ def test_request_metrics_logged(client, caplog):
     msg = metrics_logs[0].getMessage()
     assert "200" in msg
     assert "ms" in msg
+
+
+def test_cors_wildcard_rejected_in_prod(monkeypatch, mock_service, mock_graph_client):
+    """CORS '*' should be stripped in non-debug mode."""
+    monkeypatch.setenv("API_KEY", "test-key")
+    monkeypatch.setenv("CORS_ORIGINS", "*")
+    monkeypatch.setenv("DEBUG", "false")
+    monkeypatch.setenv("ALLOW_ANONYMOUS", "false")
+    from cog_rag_cognee.config import get_settings
+
+    get_settings.cache_clear()
+
+    from api.app import create_app
+    from api.deps import set_graph_client, set_service
+
+    set_service(mock_service)
+    set_graph_client(mock_graph_client)
+
+    app = create_app()
+    with TestClient(app) as c:
+        resp = c.options(
+            "/api/v1/health",
+            headers={"Origin": "https://evil.com", "Access-Control-Request-Method": "GET"},
+        )
+        # Wildcard stripped — evil.com should NOT be reflected
+        assert resp.headers.get("access-control-allow-origin") != "*"
+
+    set_service(None)
+    set_graph_client(None)
+    get_settings.cache_clear()
