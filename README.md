@@ -234,7 +234,7 @@ cog-rag-cognee/
 │   └── example.owl           # Example domain ontology
 ├── data/                     # Sample documents (EN/RU)
 ├── benchmark/                # Evaluation questions
-├── tests/                    # 249 pytest tests
+├── tests/                    # 256 pytest tests
 ├── docker-compose.yml        # Neo4j + Ollama
 ├── requirements.txt
 ├── pyproject.toml
@@ -275,7 +275,7 @@ Results are saved to `benchmark/results.json`. Questions are in `benchmark/quest
 ## Tests
 
 ```bash
-pytest tests/ -v --cov=cog_rag_cognee --cov=api   # 249 tests
+pytest tests/ -v --cov=cog_rag_cognee --cov=api   # 256 tests
 ruff check .                                        # Lint
 ```
 
@@ -300,13 +300,18 @@ All settings via environment variables or `.env` file. See `.env.example` for th
 | `COGNEE_TIMEOUT` | `300` | Timeout for cognee operations (10-3600 s) |
 | `NEO4J_TIMEOUT` | `30` | Timeout per Neo4j operation (1-300 s) |
 | `ALLOW_ANONYMOUS` | `false` | Allow API access without API_KEY |
+| `RATE_LIMIT_PER_MINUTE` | `60` | API rate limit per client IP |
 
-## Deferred Features
+## Security
 
-- BM25 keyword search (tantivy / SQLite FTS5)
-- Memify graph optimization
-- Iterative probing
-- Semantic cache
+- API key authentication (`X-API-Key` header, constant-time comparison)
+- Secure-by-default: API key required unless `ALLOW_ANONYMOUS=true`
+- Input sanitization: null-byte stripping, whitespace rejection, filename sanitization
+- File upload: size limit, empty file rejection, reserved name handling
+- Response headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Cache-Control: no-store`
+- CORS: configurable origins, wildcard rejected in production
+- Rate limiting: configurable per-minute limit per client IP
+- Request correlation: `X-Request-ID` on every response
 
 ## License
 
