@@ -140,11 +140,11 @@ with tab_graph:
     if st.button(t("graph_load")) or stats_data.get("nodes", 0) > 0:
         with st.spinner(t("graph_loading")):
             try:
-                query: dict[str, str] = {"limit": "200"}
+                graph_params: dict[str, str] = {"limit": "200"}
                 if selected_types and selected_types != entity_types_available:
-                    query["entity_types"] = ",".join(selected_types)
+                    graph_params["entity_types"] = ",".join(selected_types)
                 resp = httpx.get(
-                    f"{api_base}/graph/entities", params=query, timeout=10
+                    f"{api_base}/graph/entities", params=graph_params, timeout=10
                 )
                 if resp.status_code == 200:
                     graph_data = resp.json()
