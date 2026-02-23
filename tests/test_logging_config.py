@@ -41,3 +41,21 @@ def test_setup_logging_respects_level(capsys):
     captured = capsys.readouterr()
     assert "should not appear" not in captured.err
     assert "should appear" in captured.err
+
+
+def test_json_formatter_includes_request_id(capsys):
+    """JSON formatter includes request_id from context var."""
+    from cog_rag_cognee.request_context import request_id_var
+
+    token = request_id_var.set("test-req-123")
+    try:
+        setup_logging(json_logs=True, log_level="INFO")
+        logger = logging.getLogger("test_req_id")
+        logger.info("trace me")
+
+        captured = capsys.readouterr()
+        line = captured.err.strip().split("\n")[-1]
+        data = json.loads(line)
+        assert data["request_id"] == "test-req-123"
+    finally:
+        request_id_var.reset(token)

@@ -4,19 +4,22 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 class _JSONFormatter(logging.Formatter):
     """Emit each log record as a single JSON line."""
 
     def format(self, record: logging.LogRecord) -> str:
+        from cog_rag_cognee.request_context import request_id_var
+
         return json.dumps(
             {
-                "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+                "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
                 "level": record.levelname,
                 "logger": record.name,
                 "message": record.getMessage(),
+                "request_id": request_id_var.get(),
             },
             ensure_ascii=False,
         )

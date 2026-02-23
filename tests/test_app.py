@@ -335,6 +335,35 @@ def test_health_response_model(client, mock_graph_client):
     assert "lancedb" not in data  # embedded DB, no health-check
 
 
+def test_health_includes_version(client):
+    """Health response includes app version."""
+    resp = client.get("/api/v1/health")
+    data = resp.json()
+    assert "version" in data
+    assert data["version"] == "0.1.0"
+
+
+def test_health_includes_uptime(client):
+    """Health response includes non-negative uptime_seconds."""
+    resp = client.get("/api/v1/health")
+    data = resp.json()
+    assert "uptime_seconds" in data
+    assert isinstance(data["uptime_seconds"], (int, float))
+    assert data["uptime_seconds"] >= 0
+
+
+def test_request_id_in_response(client):
+    """Every response includes X-Request-ID header."""
+    resp = client.get("/api/v1/health")
+    assert "x-request-id" in resp.headers
+
+
+def test_custom_request_id_echoed(client):
+    """Client-provided X-Request-ID is echoed back."""
+    resp = client.get("/api/v1/health", headers={"X-Request-ID": "my-id-42"})
+    assert resp.headers["x-request-id"] == "my-id-42"
+
+
 def test_exception_handler_ingestion_error(client, mock_service):
     """IngestionError returns 502 with generic message (DEBUG=false)."""
     from cog_rag_cognee.exceptions import IngestionError

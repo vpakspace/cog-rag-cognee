@@ -72,10 +72,7 @@ async def _check_startup_deps(settings: Settings) -> None:
 
 async def cograg_error_handler(request: Request, exc: CogRagError) -> JSONResponse:
     """Map custom exceptions to appropriate HTTP status codes."""
-    if isinstance(exc, (IngestionError, SearchError)):
-        status_code = 502
-    else:
-        status_code = 500
+    status_code = 502 if isinstance(exc, (IngestionError, SearchError)) else 500
     logger.warning("CogRagError: %s", exc, exc_info=True)
 
     settings = get_settings()
@@ -125,10 +122,16 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def add_request_id(request: Request, call_next):
-        """Add X-Request-ID to every response for request tracing."""
+        """Add X-Request-ID to every response and propagate to logs."""
+        from cog_rag_cognee.request_context import request_id_var
+
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = request_id
-        return response
+        token = request_id_var.set(request_id)
+        try:
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:
+            request_id_var.reset(token)
 
     return app
