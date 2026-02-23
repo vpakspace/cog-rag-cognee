@@ -68,9 +68,10 @@ def client(mock_service, mock_graph_client):
     set_graph_client(None)
 
 
-def test_health(client, mock_graph_client):
+def test_health(client, mock_graph_client, monkeypatch):
     """Health endpoint checks Neo4j and Ollama connectivity."""
     mock_graph_client.health_check = AsyncMock(return_value=True)
+    monkeypatch.setattr("api.routes.check_ollama", AsyncMock(return_value=True))
     resp = client.get("/api/v1/health")
     assert resp.status_code == 200
     data = resp.json()
@@ -106,9 +107,10 @@ def test_liveness_always_200(client, mock_graph_client):
     assert resp.json()["status"] == "ok"
 
 
-def test_readiness_200_when_all_healthy(client, mock_graph_client):
+def test_readiness_200_when_all_healthy(client, mock_graph_client, monkeypatch):
     """Readiness returns 200 when all deps are healthy."""
     mock_graph_client.health_check = AsyncMock(return_value=True)
+    monkeypatch.setattr("api.routes.check_ollama", AsyncMock(return_value=True))
     resp = client.get("/api/v1/readiness")
     assert resp.status_code == 200
     data = resp.json()
