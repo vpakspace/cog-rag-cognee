@@ -202,6 +202,45 @@ class TestHealthCheck:
         assert await graph_client.health_check() is False
 
 
+class TestRetry:
+    @pytest.mark.asyncio
+    async def test_get_entities_retries_on_transient_error(self, graph_client, mock_driver):
+        """get_entities retries once on ConnectionError then succeeds."""
+        _, session = mock_driver
+        session.run.side_effect = [
+            ConnectionError("reset"),
+            AsyncResultMock([{"id": 1, "label": "Alice", "type": "Person"}]),
+        ]
+
+        result = await graph_client.get_entities()
+
+        assert len(result) == 1
+        assert session.run.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_get_stats_retries_on_transient_error(self, graph_client, mock_driver):
+        """get_stats retries once on OSError then succeeds."""
+        _, session = mock_driver
+        session.run.side_effect = [
+            OSError("connection lost"),
+            AsyncResultMock([{"types": [{"label": "Person", "cnt": 5}], "edges": 10}]),
+        ]
+
+        stats = await graph_client.get_stats()
+
+        assert stats["nodes"] == 5
+        assert session.run.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_get_entities_raises_after_retries_exhausted(self, graph_client, mock_driver):
+        """get_entities raises after max retries exhausted."""
+        _, session = mock_driver
+        session.run.side_effect = ConnectionError("down")
+
+        with pytest.raises(ConnectionError):
+            await graph_client.get_entities()
+
+
 class TestClose:
     @pytest.mark.asyncio
     async def test_close(self, graph_client, mock_driver):
