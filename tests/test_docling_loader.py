@@ -220,3 +220,96 @@ def test_load_file_convenience(tmp_path: Path):
     text = load_file(str(f))
     assert text == "convenience content"
     assert isinstance(text, str)
+
+
+# ── GPU acceleration path (lines 76-87) ───────────────────────
+
+
+def _mock_docling_modules_with_gpu():
+    """Create mock modules that simulate docling + GPU acceleration imports."""
+    mock_converter_cls = MagicMock()
+    mock_doc = MagicMock()
+    mock_doc.export_to_markdown.return_value = "# GPU content"
+    mock_doc.num_pages = 5
+
+    mock_converter_instance = MagicMock()
+    mock_result = MagicMock()
+    mock_result.document = mock_doc
+    mock_converter_instance.convert.return_value = mock_result
+    mock_converter_cls.return_value = mock_converter_instance
+
+    mock_accel_device = MagicMock()
+    mock_accel_device.AUTO = "auto"
+    mock_accel_options = MagicMock()
+
+    return {
+        "docling": MagicMock(),
+        "docling.datamodel": MagicMock(),
+        "docling.datamodel.base_models": MagicMock(InputFormat=MagicMock(PDF="pdf")),
+        "docling.datamodel.pipeline_options": MagicMock(
+            PdfPipelineOptions=MagicMock(return_value=MagicMock())
+        ),
+        "docling.document_converter": MagicMock(
+            DocumentConverter=mock_converter_cls,
+            PdfFormatOption=MagicMock(),
+        ),
+        "docling.datamodel.accelerator_options": MagicMock(
+            AcceleratorDevice=mock_accel_device,
+            AcceleratorOptions=mock_accel_options,
+        ),
+    }
+
+
+def test_gpu_acceleration_enabled(tmp_path: Path):
+    """GPU path imports AcceleratorDevice and sets options (lines 76-85)."""
+    f = tmp_path / "doc.pdf"
+    f.write_bytes(b"%PDF-1.4 fake")
+
+    mocks = _mock_docling_modules_with_gpu()
+    with patch.dict("sys.modules", mocks):
+        loader = DoclingLoader(use_gpu=True)
+        result = loader.load(f)
+
+    assert result.markdown == "# GPU content"
+    # Verify AcceleratorOptions was called
+    accel_mod = mocks["docling.datamodel.accelerator_options"]
+    accel_mod.AcceleratorOptions.assert_called_once()
+
+
+def test_gpu_import_fallback(tmp_path: Path):
+    """GPU falls back to CPU when accelerator imports fail (lines 86-89)."""
+    f = tmp_path / "doc.pdf"
+    f.write_bytes(b"%PDF-1.4 fake")
+
+    mocks = _mock_docling_modules()
+    # Simulate accelerator_options import failure
+    mocks["docling.datamodel.accelerator_options"] = None
+    with patch.dict("sys.modules", mocks):
+        loader = DoclingLoader(use_gpu=True)
+        result = loader.load(f)
+
+    # Should succeed with CPU fallback
+    assert result.markdown == "# Converted PDF content"
+
+
+# ── Callable pages() branch (line 143) ──────────────────────
+
+
+def test_callable_num_pages(tmp_path: Path):
+    """When doc.num_pages is callable, it gets called (line 143)."""
+    f = tmp_path / "doc.pdf"
+    f.write_bytes(b"%PDF-1.4 fake")
+
+    mocks = _mock_docling_modules()
+    # Make num_pages a callable that returns 7
+    doc_mock = mocks["docling.document_converter"].DocumentConverter.return_value \
+        .convert.return_value.document
+    doc_mock.num_pages = MagicMock(return_value=7)
+    # Make callable() return True for num_pages
+    doc_mock.num_pages.__call__ = MagicMock(return_value=7)
+
+    with patch.dict("sys.modules", mocks):
+        loader = DoclingLoader()
+        result = loader.load(f)
+
+    assert result.metadata["pages"] == 7
