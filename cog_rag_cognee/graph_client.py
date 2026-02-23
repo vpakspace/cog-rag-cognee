@@ -39,14 +39,14 @@ class GraphClient:
             cypher = (
                 "MATCH (n) WHERE n.name IS NOT NULL "
                 "AND labels(n)[0] IN $types "
-                "RETURN id(n) AS id, n.name AS label, labels(n)[0] AS type "
+                "RETURN elementId(n) AS id, n.name AS label, labels(n)[0] AS type "
                 "LIMIT $limit"
             )
             params = {"types": entity_types, "limit": limit}
         else:
             cypher = (
                 "MATCH (n) WHERE n.name IS NOT NULL "
-                "RETURN id(n) AS id, n.name AS label, labels(n)[0] AS type "
+                "RETURN elementId(n) AS id, n.name AS label, labels(n)[0] AS type "
                 "LIMIT $limit"
             )
             params = {"limit": limit}
@@ -88,22 +88,24 @@ class GraphClient:
         """Return node/edge counts and entity type breakdown.
 
         Returns ``{nodes, edges, entity_types: {label: count}}``.
+        Uses a single query for consistency.
         """
-        entity_types: dict[str, int] = {}
-        total_edges = 0
-
+        cypher = (
+            "CALL { MATCH (n) RETURN labels(n)[0] AS label, count(*) AS cnt } "
+            "WITH collect({label: label, cnt: cnt}) AS types "
+            "CALL { MATCH ()-[r]->() RETURN count(r) AS edges } "
+            "RETURN types, edges"
+        )
         with self._driver.session() as session:
-            # Node counts by label
-            result = session.run(
-                "MATCH (n) RETURN labels(n)[0] AS label, count(*) AS cnt"
-            )
-            for record in result:
-                entity_types[record["label"]] = record["cnt"]
+            row = session.run(cypher).single()
 
-            # Total edges
-            result = session.run("MATCH ()-[r]->() RETURN count(r) AS cnt")
-            row = result.single()
-            total_edges = row["cnt"] if row else 0
+        entity_types: dict[str, int] = {}
+        if row:
+            for item in row["types"]:
+                entity_types[item["label"]] = item["cnt"]
+            total_edges = row["edges"]
+        else:
+            total_edges = 0
 
         return {
             "nodes": sum(entity_types.values()),

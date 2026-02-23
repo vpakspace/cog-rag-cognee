@@ -5,11 +5,17 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from cog_rag_cognee.cognee_setup import apply_cognee_env
 from cog_rag_cognee.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
 
 @asynccontextmanager
@@ -19,16 +25,42 @@ async def lifespan(app: FastAPI):
     apply_cognee_env(settings)
     logger.info("cog-rag-cognee API started on port %d", settings.api_port)
     yield
+    # Shutdown: close GraphClient connection pool
+    from api.deps import get_graph_client, set_graph_client
+
+    try:
+        gc = get_graph_client()
+        gc.close()
+        set_graph_client(None)
+        logger.info("GraphClient closed")
+    except Exception:
+        pass
     logger.info("cog-rag-cognee API shutting down")
 
 
 def create_app() -> FastAPI:
     """Create and configure FastAPI application."""
+    settings = get_settings()
+
     app = FastAPI(
         title="cog-rag-cognee",
         description="Semantic memory layer with Cognee SDK — 100% local stack",
         version="0.1.0",
         lifespan=lifespan,
+    )
+
+    # Rate limiting
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+
+    # CORS
+    origins = [o.strip() for o in settings.cors_origins.split(",")]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     from api.routes import router

@@ -1,29 +1,50 @@
 """REST API endpoints."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
-from pydantic import BaseModel, Field
+import logging
+import re
+from typing import Literal
 
-from api.deps import get_graph_client, get_service
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from pydantic import BaseModel, Field, field_validator
+
+from api.deps import get_graph_client, get_service, verify_api_key
+from cog_rag_cognee.config import get_settings
 from cog_rag_cognee.graph_client import GraphClient
 from cog_rag_cognee.service import PipelineService
 
-router = APIRouter(prefix="/api/v1")
+logger = logging.getLogger(__name__)
+
+SearchMode = Literal["CHUNKS", "GRAPH_COMPLETION", "RAG_COMPLETION", "SUMMARIES"]
+
+router = APIRouter(
+    prefix="/api/v1",
+    dependencies=[Depends(verify_api_key)],
+)
+
+_DATASET_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 class QueryRequest(BaseModel):
     """Request body for /query and /search endpoints."""
 
-    text: str = Field(..., min_length=1)
-    mode: str = "GRAPH_COMPLETION"
+    text: str = Field(..., min_length=1, max_length=500_000)
+    mode: SearchMode = "CHUNKS"
     limit: int = Field(default=5, ge=1, le=50)
 
 
 class IngestRequest(BaseModel):
     """Request body for /ingest endpoint."""
 
-    text: str = Field(..., min_length=1)
-    dataset_name: str = "main"
+    text: str = Field(..., min_length=1, max_length=500_000)
+    dataset_name: str = Field(default="main", min_length=1, max_length=64)
+
+    @field_validator("dataset_name")
+    @classmethod
+    def validate_dataset_name(cls, v: str) -> str:
+        if not _DATASET_RE.match(v):
+            raise ValueError("dataset_name must be alphanumeric, hyphens, or underscores")
+        return v
 
 
 @router.get("/health")
@@ -61,8 +82,22 @@ async def ingest_file(
     svc: PipelineService = Depends(get_service),
 ):
     """Ingest an uploaded file (PDF, DOCX, TXT, etc.) and run Cognee pipeline."""
+    # Validate dataset_name
+    if not _DATASET_RE.match(dataset_name):
+        raise HTTPException(status_code=422, detail="Invalid dataset_name")
+
+    # Enforce file size limit
+    settings = get_settings()
     data = await file.read()
-    result = await svc.add_bytes(data, file.filename or "upload.txt", dataset_name)
+    if len(data) > settings.max_upload_bytes:
+        mb = settings.max_upload_bytes // (1024 * 1024)
+        raise HTTPException(status_code=413, detail=f"File too large (max {mb} MB)")
+
+    # Sanitize filename: strip path components, remove unsafe chars
+    raw_name = (file.filename or "upload.txt").rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    filename = re.sub(r"[^\w.\-]", "_", raw_name).lstrip(".")
+
+    result = await svc.add_bytes(data, filename, dataset_name)
     cognify_result = await svc.cognify(dataset_name=dataset_name)
     return {"ingest": result, "cognify": str(cognify_result)}
 
@@ -73,6 +108,7 @@ async def graph_stats(gc: GraphClient = Depends(get_graph_client)):
     try:
         return gc.get_stats()
     except Exception:
+        logger.warning("Failed to fetch graph stats", exc_info=True)
         return {"nodes": 0, "edges": 0, "entity_types": {}}
 
 
@@ -93,4 +129,5 @@ async def graph_entities(
         edges = gc.get_relationships(limit=limit * 2, entity_types=types_list)
         return {"nodes": nodes, "edges": edges}
     except Exception:
+        logger.warning("Failed to fetch graph entities", exc_info=True)
         return {"nodes": [], "edges": []}

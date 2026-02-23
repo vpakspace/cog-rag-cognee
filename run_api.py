@@ -12,5 +12,5 @@ if __name__ == "__main__":
         factory=True,
         host=settings.api_host,
         port=settings.api_port,
-        reload=True,
+        reload=settings.debug,
     )

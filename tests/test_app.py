@@ -152,8 +152,14 @@ def test_graph_stats_fallback(client, mock_graph_client):
 
 def test_query_custom_mode(client, mock_service):
     """Query endpoint passes custom mode to service."""
-    client.post("/api/v1/query", json={"text": "test", "mode": "INSIGHTS", "limit": 10})
-    mock_service.query.assert_called_once_with("test", search_type="INSIGHTS", limit=10)
+    client.post("/api/v1/query", json={"text": "test", "mode": "RAG_COMPLETION", "limit": 10})
+    mock_service.query.assert_called_once_with("test", search_type="RAG_COMPLETION", limit=10)
+
+
+def test_query_invalid_mode(client):
+    """Query endpoint rejects invalid search mode."""
+    resp = client.post("/api/v1/query", json={"text": "test", "mode": "INVALID"})
+    assert resp.status_code == 422
 
 
 def test_ingest_custom_dataset(client, mock_service):
@@ -189,3 +195,59 @@ def test_ingest_file_custom_dataset(client, mock_service):
     mock_service.add_bytes.assert_called_once_with(
         b"%PDF fake", "doc.pdf", "papers"
     )
+
+
+def test_ingest_invalid_dataset_name(client):
+    """Ingest endpoint rejects invalid dataset_name characters."""
+    resp = client.post(
+        "/api/v1/ingest", json={"text": "data", "dataset_name": "../etc/passwd"}
+    )
+    assert resp.status_code == 422
+
+
+def test_ingest_file_invalid_dataset_name(client):
+    """Ingest-file endpoint rejects invalid dataset_name."""
+    resp = client.post(
+        "/api/v1/ingest-file",
+        files={"file": ("test.txt", b"data", "text/plain")},
+        data={"dataset_name": "../../hack"},
+    )
+    assert resp.status_code == 422
+
+
+def test_ingest_file_size_limit(client):
+    """Ingest-file endpoint rejects oversized uploads."""
+    big_data = b"x" * (50 * 1024 * 1024 + 1)  # 50MB + 1 byte
+    resp = client.post(
+        "/api/v1/ingest-file",
+        files={"file": ("big.txt", big_data, "text/plain")},
+    )
+    assert resp.status_code == 413
+
+
+def test_ingest_text_too_long(client):
+    """Ingest endpoint rejects text exceeding max_length."""
+    resp = client.post("/api/v1/ingest", json={"text": "x" * 500_001})
+    assert resp.status_code == 422
+
+
+def test_graph_entities_fallback(client, mock_graph_client):
+    """Graph entities returns empty lists when Neo4j is unavailable."""
+    mock_graph_client.get_entities.side_effect = Exception("Connection refused")
+    resp = client.get("/api/v1/graph/entities")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["nodes"] == []
+
+
+def test_filename_sanitized(client, mock_service):
+    """Ingest-file sanitizes filenames with special characters."""
+    resp = client.post(
+        "/api/v1/ingest-file",
+        files={"file": ("../../etc/passwd.txt", b"data", "text/plain")},
+    )
+    assert resp.status_code == 200
+    call_args = mock_service.add_bytes.call_args
+    filename = call_args[0][1]
+    assert "/" not in filename
+    assert ".." not in filename

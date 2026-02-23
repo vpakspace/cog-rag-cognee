@@ -1,12 +1,29 @@
 """Dependency injection for FastAPI."""
 from __future__ import annotations
 
+from fastapi import HTTPException, Security
+from fastapi.security import APIKeyHeader
+
 from cog_rag_cognee.config import get_settings
 from cog_rag_cognee.graph_client import GraphClient
 from cog_rag_cognee.service import PipelineService
 
 _service: PipelineService | None = None
 _graph_client: GraphClient | None = None
+
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+async def verify_api_key(
+    api_key: str | None = Security(_api_key_header),
+) -> str | None:
+    """Validate API key if configured. Skip auth when api_key is empty."""
+    settings = get_settings()
+    if not settings.api_key:
+        return None  # Auth disabled
+    if api_key != settings.api_key:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    return api_key
 
 
 def get_service() -> PipelineService:

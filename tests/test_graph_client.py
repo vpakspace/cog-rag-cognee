@@ -114,16 +114,16 @@ class TestGetStats:
     def test_returns_stats(self, graph_client, mock_driver):
         _, session = mock_driver
 
-        # First call: node counts by label
-        label_results = [
-            {"label": "Person", "cnt": 10},
-            {"label": "Organization", "cnt": 5},
-        ]
-        # Second call: total edges
-        edge_result = MagicMock()
-        edge_result.single.return_value = {"cnt": 20}
-
-        session.run.side_effect = [label_results, edge_result]
+        # Single combined query returns types list + edges count
+        combined_result = MagicMock()
+        combined_result.single.return_value = {
+            "types": [
+                {"label": "Person", "cnt": 10},
+                {"label": "Organization", "cnt": 5},
+            ],
+            "edges": 20,
+        }
+        session.run.return_value = combined_result
 
         stats = graph_client.get_stats()
 
@@ -135,9 +135,12 @@ class TestGetStats:
     def test_empty_graph(self, graph_client, mock_driver):
         _, session = mock_driver
 
-        edge_result = MagicMock()
-        edge_result.single.return_value = {"cnt": 0}
-        session.run.side_effect = [[], edge_result]
+        combined_result = MagicMock()
+        combined_result.single.return_value = {
+            "types": [],
+            "edges": 0,
+        }
+        session.run.return_value = combined_result
 
         stats = graph_client.get_stats()
 

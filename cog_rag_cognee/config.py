@@ -41,8 +41,11 @@ class Settings(BaseSettings):
 
     # API
     api_key: str = ""
-    api_host: str = "0.0.0.0"
+    api_host: str = "127.0.0.1"
     api_port: int = 8508
+    cors_origins: str = "*"
+    debug: bool = False
+    max_upload_bytes: int = 50 * 1024 * 1024  # 50 MB
 
     # UI
     ui_port: int = 8506

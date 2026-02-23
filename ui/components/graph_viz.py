@@ -1,6 +1,7 @@
 """PyVis interactive graph visualization."""
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -58,7 +59,12 @@ def render_graph(nodes: list[dict], edges: list[dict]) -> None:
         if src and tgt:
             net.add_edge(src, tgt, label=edge.get("type", ""))
 
-    with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w") as f:
-        net.save_graph(f.name)
-        html_content = Path(f.name).read_text()
+    fd, tmp_name = tempfile.mkstemp(suffix=".html")
+    os.close(fd)
+    tmp = Path(tmp_name)
+    try:
+        net.save_graph(str(tmp))
+        html_content = tmp.read_text()
         components.html(html_content, height=620)
+    finally:
+        tmp.unlink(missing_ok=True)
