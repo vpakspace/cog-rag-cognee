@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 from api.deps import get_graph_client, get_service, verify_api_key
 from cog_rag_cognee.config import get_settings
 from cog_rag_cognee.graph_client import GraphClient
+from cog_rag_cognee.health import check_ollama
 from cog_rag_cognee.models import (
     GraphEntitiesResponse,
     GraphStats,
@@ -63,27 +64,11 @@ async def health(gc: GraphClient = Depends(get_graph_client)):
     except Exception:
         neo4j_ok = False
 
-    ollama_ok = await _check_ollama()
+    settings = get_settings()
+    ollama_ok = await check_ollama(settings.llm_endpoint)
 
     status = "ok" if neo4j_ok else "degraded"
     return HealthStatus(status=status, neo4j=neo4j_ok, ollama=ollama_ok)
-
-
-async def _check_ollama() -> bool:
-    """Check Ollama is reachable via /api/tags."""
-    import httpx
-
-    settings = get_settings()
-    # Extract base URL from llm_endpoint (strip /v1 suffix if present)
-    base = settings.llm_endpoint.rstrip("/")
-    if base.endswith("/v1"):
-        base = base[:-3]
-    try:
-        async with httpx.AsyncClient(timeout=3) as client:
-            resp = await client.get(f"{base}/api/tags")
-            return resp.status_code == 200
-    except Exception:
-        return False
 
 
 @router.post("/query", response_model=QAResult)
