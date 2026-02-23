@@ -111,8 +111,8 @@ async def ingest_file(
         raise HTTPException(status_code=413, detail=f"File too large (max {mb} MB)")
 
     # Sanitize filename: strip path components, remove unsafe chars
-    raw_name = (file.filename or "upload.txt").rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
-    filename = re.sub(r"[^\w.\-]", "_", raw_name).lstrip(".")
+    raw_name = (file.filename or "upload.bin").rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    filename = re.sub(r"[^\w.\-]", "_", raw_name).lstrip(".") or "upload.bin"
 
     result = await svc.add_bytes(data, filename, dataset_name)
     cognify_result = await svc.cognify(dataset_name=dataset_name)

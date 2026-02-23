@@ -282,6 +282,18 @@ def test_filename_sanitized(client, mock_service):
     assert ".." not in filename
 
 
+def test_filename_dots_only(client, mock_service):
+    """Ingest-file with dots-only filename gets a safe fallback."""
+    resp = client.post(
+        "/api/v1/ingest-file",
+        files={"file": ("...", b"data", "text/plain")},
+    )
+    assert resp.status_code == 200
+    call_args = mock_service.add_bytes.call_args
+    filename = call_args[0][1]
+    assert len(filename) > 0
+
+
 def test_reset(client, mock_service):
     """Reset endpoint calls service.reset() with confirmation."""
     resp = client.post("/api/v1/reset", json={"confirm": True})
