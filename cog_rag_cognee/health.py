@@ -38,7 +38,9 @@ async def check_ollama_models(llm_endpoint: str, required_models: list[str]) -> 
             resp = await client.get(f"{base}/api/tags")
             if resp.status_code != 200:
                 return {m: False for m in required_models}
-            available = {m["name"] for m in resp.json().get("models", [])}
+            available = {
+                m.get("name") for m in resp.json().get("models", []) if m.get("name")
+            }
             return {m: m in available for m in required_models}
     except Exception:
         return {m: False for m in required_models}
