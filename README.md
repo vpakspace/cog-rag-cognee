@@ -152,6 +152,7 @@ docker run -d --name neo4j -p 7474:7474 -p 7687:7687 \
 | POST | `/api/v1/search` | Search only (no generation) |
 | GET | `/api/v1/graph/stats` | Live knowledge graph statistics |
 | GET | `/api/v1/graph/entities` | Graph nodes + edges for visualization |
+| GET | `/api/v1/datasets` | List available datasets |
 | POST | `/api/v1/reset` | Reset all Cognee data |
 
 ### Example: Query
@@ -213,7 +214,7 @@ cog-rag-cognee/
 │   └── exceptions.py         # Custom exceptions
 ├── api/
 │   ├── app.py                # FastAPI factory + lifespan
-│   ├── routes.py             # REST endpoints (8)
+│   ├── routes.py             # REST endpoints (9)
 │   └── deps.py               # Dependency injection (service + graph_client)
 ├── ui/
 │   ├── streamlit_app.py      # 4-tab UI
@@ -269,7 +270,7 @@ Results are saved to `benchmark/results.json`. Questions are in `benchmark/quest
 ## Tests
 
 ```bash
-pytest tests/ -v --cov=cog_rag_cognee --cov=api   # 124 tests
+pytest tests/ -v --cov=cog_rag_cognee --cov=api   # 134 tests
 ruff check .                                        # Lint
 ```
 
