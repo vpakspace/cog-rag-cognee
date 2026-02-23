@@ -196,7 +196,7 @@ async def graph_stats(gc: GraphClient = Depends(get_graph_client)):
         return await gc.get_stats()
     except Exception as exc:
         logger.warning("Failed to fetch graph stats", exc_info=True)
-        raise HTTPException(status_code=502, detail=f"Graph stats unavailable: {exc}")
+        raise HTTPException(status_code=502, detail=f"Graph stats unavailable: {exc}") from exc
 
 
 @router.get("/graph/entities", response_model=GraphEntitiesResponse)
@@ -221,7 +221,7 @@ async def graph_entities(
         return GraphEntitiesResponse(nodes=nodes, edges=edges)
     except Exception as exc:
         logger.warning("Failed to fetch graph entities", exc_info=True)
-        raise HTTPException(status_code=502, detail=f"Graph entities unavailable: {exc}")
+        raise HTTPException(status_code=502, detail=f"Graph entities unavailable: {exc}") from exc
 
 
 class ResetRequest(BaseModel):

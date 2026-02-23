@@ -15,7 +15,9 @@ def _secured_app(monkeypatch):
     get_settings.cache_clear()
 
     svc = MagicMock()
-    svc.query = AsyncMock(return_value={"answer": "ok", "confidence": 1.0, "sources": [], "mode": "default"})
+    svc.query = AsyncMock(
+        return_value={"answer": "ok", "confidence": 1.0, "sources": [], "mode": "default"}
+    )
     svc.search = AsyncMock(return_value=[])
     svc.add_text = AsyncMock(return_value={"status": "added", "chars": 5, "dataset": "main"})
     svc.cognify = AsyncMock(return_value={})
@@ -61,10 +63,7 @@ class TestAPIKeyEnforcement:
     @pytest.mark.parametrize("method,path,body", PROTECTED_ENDPOINTS)
     def test_endpoint_requires_api_key(self, _secured_app, method, path, body):
         client, _ = _secured_app
-        if method == "GET":
-            resp = client.get(path)
-        else:
-            resp = client.post(path, json=body)
+        resp = client.get(path) if method == "GET" else client.post(path, json=body)
         assert resp.status_code == 401, f"{method} {path} should require API key"
 
     @pytest.mark.parametrize("method,path,body", PROTECTED_ENDPOINTS[:3])

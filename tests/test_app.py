@@ -582,9 +582,8 @@ def test_startup_refuses_without_api_key_in_prod(monkeypatch):
     set_graph_client(MagicMock())
 
     app = create_app()
-    with pytest.raises(Exception, match="API_KEY.*required"):
-        with TestClient(app):
-            pass
+    with pytest.raises(Exception, match="API_KEY.*required"), TestClient(app):
+        pass
 
     set_service(None)
     set_graph_client(None)
