@@ -66,3 +66,10 @@ class HealthStatus(BaseModel):
     uptime_seconds: float = 0.0
     ollama: bool = False
     neo4j: bool = False
+
+
+class ReadinessStatus(BaseModel):
+    """Readiness probe response for k8s/load balancers."""
+
+    status: str = "ready"
+    checks: dict[str, bool] = Field(default_factory=dict)
