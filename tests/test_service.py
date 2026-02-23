@@ -244,6 +244,86 @@ async def test_reset(mock_cognee):
     mock_cognee.prune.prune_data.assert_called_once()
 
 
+# --- _extract_result branch tests ---
+
+
+def test_extract_result_plain_string():
+    """Plain string input returns str with 0.5 score."""
+    from cog_rag_cognee.service import PipelineService
+
+    content, score = PipelineService._extract_result("raw text")
+    assert content == "raw text"
+    assert score == 0.5
+
+
+def test_extract_result_empty_list():
+    """Empty list returns empty string."""
+    from cog_rag_cognee.service import PipelineService
+
+    content, score = PipelineService._extract_result([])
+    assert content == ""
+    assert score == 0.5
+
+
+def test_extract_result_list_of_strings():
+    """List of strings joins them."""
+    from cog_rag_cognee.service import PipelineService
+
+    content, score = PipelineService._extract_result(["hello", "world"])
+    assert content == "hello\nworld"
+    assert score == 0.5
+
+
+def test_extract_result_list_with_non_dict_non_str():
+    """List with non-dict non-str items uses str()."""
+    from cog_rag_cognee.service import PipelineService
+
+    content, score = PipelineService._extract_result([42, None])
+    assert "42" in content
+    assert "None" in content
+
+
+def test_extract_result_object_with_content_list():
+    """Object with .content as list extracts text."""
+    from cog_rag_cognee.service import PipelineService
+
+    obj = MagicMock()
+    obj.content = [{"text": "chunk1"}, "plain", 42]
+    obj.relevance_score = 0.8
+    content, score = PipelineService._extract_result(obj)
+    assert "chunk1" in content
+    assert "plain" in content
+    assert "42" in content
+    assert score == 0.8
+
+
+def test_extract_result_object_with_content_string():
+    """Object with .content as string returns it directly."""
+    from cog_rag_cognee.service import PipelineService
+
+    obj = MagicMock()
+    obj.content = "direct content"
+    del obj.relevance_score  # no score attr
+    content, score = PipelineService._extract_result(obj)
+    assert content == "direct content"
+    assert score == 0.5
+
+
+def test_extract_result_score_clamped():
+    """Scores outside [0,1] are clamped."""
+    from cog_rag_cognee.service import PipelineService
+
+    obj = MagicMock()
+    obj.content = "text"
+    obj.relevance_score = 1.5
+    _, score = PipelineService._extract_result(obj)
+    assert score == 1.0
+
+    obj.relevance_score = -0.3
+    _, score = PipelineService._extract_result(obj)
+    assert score == 0.0
+
+
 # --- Exception handling tests ---
 
 
