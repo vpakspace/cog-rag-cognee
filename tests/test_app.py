@@ -1,4 +1,5 @@
 """Tests for FastAPI application."""
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -420,6 +421,35 @@ def test_health_includes_uptime(client):
     assert data["uptime_seconds"] >= 0
 
 
+@pytest.mark.asyncio
+async def test_check_ollama_models_returns_availability():
+    """check_ollama_models maps each model name to its availability."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from cog_rag_cognee.health import check_ollama_models
+
+    fake_response = MagicMock()
+    fake_response.status_code = 200
+    fake_response.json.return_value = {
+        "models": [{"name": "llama3.1:8b"}, {"name": "nomic-embed-text:latest"}]
+    }
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(return_value=fake_response)
+
+    with patch("cog_rag_cognee.health.httpx.AsyncClient", return_value=mock_client):
+        result = await check_ollama_models(
+            "http://localhost:11434/v1",
+            ["llama3.1:8b", "unknown-model:latest"],
+        )
+
+    assert isinstance(result, dict)
+    assert result["llama3.1:8b"] is True
+    assert result["unknown-model:latest"] is False
+
+
 def test_request_id_in_response(client):
     """Every response includes X-Request-ID header."""
     resp = client.get("/api/v1/health")
@@ -772,8 +802,6 @@ def test_reset_allowed_with_api_key(monkeypatch, mock_service, mock_graph_client
 
 def test_request_metrics_logged(client, caplog):
     """Every request should log method, path, status, and duration."""
-    import logging
-
     with caplog.at_level(logging.INFO, logger="api.app"):
         client.get("/api/v1/liveness")
 

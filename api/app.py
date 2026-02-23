@@ -78,6 +78,16 @@ async def _check_startup_deps(settings: Settings) -> None:
     else:
         logger.warning("Ollama: unreachable at %s", settings.llm_endpoint)
 
+    # Check required Ollama models
+    from cog_rag_cognee.health import check_ollama_models
+    required_models = [settings.llm_model, settings.embedding_model]
+    model_status = await check_ollama_models(settings.llm_endpoint, required_models)
+    for model, available in model_status.items():
+        if available:
+            logger.info("Ollama model '%s': available", model)
+        else:
+            logger.warning("Ollama model '%s': NOT FOUND — run 'ollama pull %s'", model, model)
+
 
 async def cograg_error_handler(request: Request, exc: CogRagError) -> JSONResponse:
     """Map custom exceptions to appropriate HTTP status codes."""
