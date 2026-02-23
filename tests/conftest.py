@@ -61,7 +61,17 @@ if "neo4j" not in sys.modules:
     _neo4j_stub.AsyncGraphDatabase = type(  # type: ignore[attr-defined]
         "AsyncGraphDatabase", (), {"driver": staticmethod(_fake_driver)}
     )
+    # Provide neo4j.exceptions stub so tests can reference ServiceUnavailable etc.
+    _neo4j_exc = types.ModuleType("neo4j.exceptions")
+
+    class _ServiceUnavailable(Exception):
+        pass
+
+    _neo4j_exc.ServiceUnavailable = _ServiceUnavailable  # type: ignore[attr-defined]
+    _neo4j_stub.exceptions = _neo4j_exc  # type: ignore[attr-defined]
+
     sys.modules["neo4j"] = _neo4j_stub
+    sys.modules["neo4j.exceptions"] = _neo4j_exc
 
 # Set default env vars before any Settings import
 os.environ.setdefault("LLM_PROVIDER", "ollama")

@@ -7,11 +7,12 @@ from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
 from neo4j import AsyncGraphDatabase
+from neo4j.exceptions import ServiceUnavailable
 
 logger = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
-_TRANSIENT = (ConnectionError, TimeoutError, OSError)
+_TRANSIENT = (ConnectionError, TimeoutError, OSError, ServiceUnavailable)
 
 
 async def _retry(

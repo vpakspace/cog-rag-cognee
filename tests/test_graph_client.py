@@ -241,6 +241,34 @@ class TestRetry:
             await graph_client.get_entities()
 
 
+    @pytest.mark.asyncio
+    async def test_non_transient_error_not_retried(self, graph_client, mock_driver):
+        """Non-transient errors (e.g. ValueError) propagate immediately."""
+        _, session = mock_driver
+        session.run.side_effect = ValueError("bad cypher")
+
+        with pytest.raises(ValueError, match="bad cypher"):
+            await graph_client.get_entities()
+
+        assert session.run.call_count == 1  # no retry
+
+    @pytest.mark.asyncio
+    async def test_service_unavailable_retried(self, graph_client, mock_driver):
+        """neo4j ServiceUnavailable is treated as transient and retried."""
+        from neo4j.exceptions import ServiceUnavailable
+
+        _, session = mock_driver
+        session.run.side_effect = [
+            ServiceUnavailable("server shutting down"),
+            AsyncResultMock([{"id": 1, "label": "Node", "type": "Test"}]),
+        ]
+
+        result = await graph_client.get_entities()
+
+        assert len(result) == 1
+        assert session.run.call_count == 2
+
+
 class TestClose:
     @pytest.mark.asyncio
     async def test_close(self, graph_client, mock_driver):
