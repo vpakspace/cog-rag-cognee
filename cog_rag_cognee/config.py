@@ -39,6 +39,7 @@ class Settings(BaseSettings):
 
     # Cognee SDK
     cognee_timeout: int = 300  # seconds for cognee operations
+    neo4j_timeout: int = 30  # seconds for individual Neo4j operations
 
     # Docling
     docling_use_gpu: bool = False
@@ -60,6 +61,13 @@ class Settings(BaseSettings):
     def validate_cognee_timeout(cls, v: int) -> int:
         if not (10 <= v <= 3600):
             raise ValueError("cognee_timeout must be between 10 and 3600 seconds")
+        return v
+
+    @field_validator("neo4j_timeout")
+    @classmethod
+    def validate_neo4j_timeout(cls, v: int) -> int:
+        if not (1 <= v <= 300):
+            raise ValueError("neo4j_timeout must be between 1 and 300 seconds")
         return v
 
     @field_validator("max_upload_bytes")

@@ -269,6 +269,20 @@ class TestRetry:
         assert session.run.call_count == 2
 
 
+    @pytest.mark.asyncio
+    async def test_retry_respects_timeout(self):
+        """_retry raises TimeoutError when the operation exceeds the timeout."""
+        import asyncio
+
+        from cog_rag_cognee.graph_client import _retry
+
+        async def slow_func():
+            await asyncio.sleep(10)  # far longer than timeout
+
+        with pytest.raises(TimeoutError):
+            await _retry(slow_func, timeout=0.1, max_retries=0)
+
+
 class TestClose:
     @pytest.mark.asyncio
     async def test_close(self, graph_client, mock_driver):

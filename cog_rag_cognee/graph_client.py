@@ -20,12 +20,21 @@ async def _retry(
     *args: object,
     max_retries: int = 1,
     base_delay: float = 0.5,
+    timeout: float | None = None,
 ) -> _T:
-    """Retry *func* on transient Neo4j errors (ConnectionError, OSError)."""
+    """Retry *func* on transient Neo4j errors (ConnectionError, OSError).
+
+    When *timeout* is given each attempt is wrapped with ``asyncio.timeout``
+    so a slow Neo4j call raises ``TimeoutError`` rather than hanging.
+    """
     last_exc: Exception | None = None
     for attempt in range(max_retries + 1):
         try:
-            return await func(*args)
+            if timeout is not None:
+                async with asyncio.timeout(timeout):
+                    return await func(*args)
+            else:
+                return await func(*args)
         except _TRANSIENT as exc:
             last_exc = exc
             if attempt < max_retries:
@@ -63,7 +72,14 @@ class GraphClient:
         Returns list of ``{id, label, type}`` dicts.
         Retries once on transient Neo4j errors.
         """
-        return await _retry(self._get_entities_impl, limit, entity_types)
+        from cog_rag_cognee.config import get_settings
+
+        return await _retry(
+            self._get_entities_impl,
+            limit,
+            entity_types,
+            timeout=get_settings().neo4j_timeout,
+        )
 
     async def _get_entities_impl(
         self, limit: int, entity_types: list[str] | None
@@ -96,7 +112,14 @@ class GraphClient:
         Returns list of ``{source, target, type}`` dicts.
         Retries once on transient Neo4j errors.
         """
-        return await _retry(self._get_relationships_impl, limit, entity_types)
+        from cog_rag_cognee.config import get_settings
+
+        return await _retry(
+            self._get_relationships_impl,
+            limit,
+            entity_types,
+            timeout=get_settings().neo4j_timeout,
+        )
 
     async def _get_relationships_impl(
         self, limit: int, entity_types: list[str] | None
@@ -130,7 +153,9 @@ class GraphClient:
         Uses a single query for consistency.
         Retries once on transient Neo4j errors.
         """
-        return await _retry(self._get_stats_impl)
+        from cog_rag_cognee.config import get_settings
+
+        return await _retry(self._get_stats_impl, timeout=get_settings().neo4j_timeout)
 
     async def _get_stats_impl(self) -> dict:
         cypher = (
