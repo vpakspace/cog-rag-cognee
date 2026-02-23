@@ -7,6 +7,14 @@ from cog_rag_cognee.service import retry_transient
 
 
 @pytest.fixture
+def svc(mock_cognee):
+    """Return a PipelineService with the cognee module already mocked."""
+    from cog_rag_cognee.service import PipelineService
+
+    return PipelineService()
+
+
+@pytest.fixture
 def mock_cognee():
     """Mock cognee module."""
     with patch("cog_rag_cognee.service.cognee") as mock:
@@ -338,6 +346,18 @@ async def test_add_text_raises_ingestion_error():
         svc = PipelineService()
         with pytest.raises(IngestionError, match="Failed to add text"):
             await svc.add_text("hello")
+
+
+@pytest.mark.asyncio
+async def test_ingestion_error_preserves_cause(svc, mock_cognee):
+    """IngestionError should chain the original exception as __cause__."""
+    from cog_rag_cognee.exceptions import IngestionError
+
+    mock_cognee.add = AsyncMock(side_effect=RuntimeError("disk full"))
+    with pytest.raises(IngestionError) as exc_info:
+        await svc.add_text("hello")
+    assert exc_info.value.__cause__ is not None
+    assert "disk full" in str(exc_info.value.__cause__)
 
 
 @pytest.mark.asyncio

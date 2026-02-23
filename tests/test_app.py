@@ -569,6 +569,94 @@ def test_exception_handler_shows_details_in_debug(mock_service, mock_graph_clien
         set_graph_client(None)
 
 
+def test_exception_handler_shows_caused_by_in_debug(mock_service, mock_graph_client):
+    """In debug mode, caused_by field contains the original exception message."""
+    import os
+    from unittest.mock import AsyncMock
+
+    from api.deps import set_graph_client, set_service
+    from cog_rag_cognee.exceptions import IngestionError
+
+    cause = RuntimeError("disk full")
+    wrapped = IngestionError("Failed to add text: disk full")
+    wrapped.__cause__ = cause
+    mock_service.add_text = AsyncMock(side_effect=wrapped)
+    set_service(mock_service)
+    set_graph_client(mock_graph_client)
+
+    old_debug = os.environ.get("DEBUG")
+    os.environ["DEBUG"] = "true"
+    try:
+        from cog_rag_cognee.config import get_settings
+        get_settings.cache_clear()
+
+        from api.app import create_app
+        app = create_app()
+        with TestClient(app) as c:
+            resp = c.post("/api/v1/ingest", json={"text": "hello"})
+        assert resp.status_code == 502
+        data = resp.json()
+        assert "caused_by" in data
+        assert "disk full" in data["caused_by"]
+    finally:
+        if old_debug is None:
+            os.environ.pop("DEBUG", None)
+        else:
+            os.environ["DEBUG"] = old_debug
+        get_settings.cache_clear()
+        set_service(None)
+        set_graph_client(None)
+
+
+def test_exception_handler_no_caused_by_in_prod(client, mock_service):
+    """In non-debug (production) mode, caused_by field is absent from response."""
+    from cog_rag_cognee.exceptions import IngestionError
+
+    cause = RuntimeError("disk full")
+    wrapped = IngestionError("Failed to add text: disk full")
+    wrapped.__cause__ = cause
+    mock_service.add_text = AsyncMock(side_effect=wrapped)
+    resp = client.post("/api/v1/ingest", json={"text": "hello"})
+    assert resp.status_code == 502
+    data = resp.json()
+    assert "caused_by" not in data
+
+
+def test_exception_handler_no_caused_by_when_no_cause_in_debug(mock_service, mock_graph_client):
+    """In debug mode, caused_by is absent when there is no __cause__."""
+    import os
+    from unittest.mock import AsyncMock
+
+    from api.deps import set_graph_client, set_service
+    from cog_rag_cognee.exceptions import IngestionError
+
+    mock_service.add_text = AsyncMock(side_effect=IngestionError("standalone error"))
+    set_service(mock_service)
+    set_graph_client(mock_graph_client)
+
+    old_debug = os.environ.get("DEBUG")
+    os.environ["DEBUG"] = "true"
+    try:
+        from cog_rag_cognee.config import get_settings
+        get_settings.cache_clear()
+
+        from api.app import create_app
+        app = create_app()
+        with TestClient(app) as c:
+            resp = c.post("/api/v1/ingest", json={"text": "hello"})
+        assert resp.status_code == 502
+        data = resp.json()
+        assert "caused_by" not in data
+    finally:
+        if old_debug is None:
+            os.environ.pop("DEBUG", None)
+        else:
+            os.environ["DEBUG"] = old_debug
+        get_settings.cache_clear()
+        set_service(None)
+        set_graph_client(None)
+
+
 def test_startup_refuses_without_api_key_in_prod(monkeypatch):
     """In non-debug mode, startup must fail if API_KEY is empty and ALLOW_ANONYMOUS is false."""
     monkeypatch.setenv("API_KEY", "")

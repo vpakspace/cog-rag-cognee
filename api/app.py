@@ -5,6 +5,7 @@ import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -86,13 +87,15 @@ async def cograg_error_handler(request: Request, exc: CogRagError) -> JSONRespon
     settings = get_settings()
     if settings.debug:
         detail = str(exc)
+        caused_by = str(exc.__cause__) if exc.__cause__ else None
     else:
         detail = "An internal error occurred. Check server logs for details."
+        caused_by = None
 
-    return JSONResponse(
-        status_code=status_code,
-        content={"code": exc.code, "error": type(exc).__name__, "detail": detail},
-    )
+    body: dict[str, Any] = {"code": exc.code, "error": type(exc).__name__, "detail": detail}
+    if caused_by:
+        body["caused_by"] = caused_by
+    return JSONResponse(status_code=status_code, content=body)
 
 
 async def validation_error_handler(
