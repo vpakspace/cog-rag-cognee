@@ -173,6 +173,19 @@ class TestGetStats:
         assert stats["entity_types"] == {}
 
 
+    @pytest.mark.asyncio
+    async def test_null_row(self, graph_client, mock_driver):
+        """get_stats returns zeros when query returns no rows."""
+        _, session = mock_driver
+        session.run.return_value = AsyncResultMock([])
+
+        stats = await graph_client.get_stats()
+
+        assert stats["nodes"] == 0
+        assert stats["edges"] == 0
+        assert stats["entity_types"] == {}
+
+
 class TestHealthCheck:
     @pytest.mark.asyncio
     async def test_success(self, graph_client, mock_driver):
