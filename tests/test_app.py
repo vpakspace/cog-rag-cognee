@@ -4,48 +4,46 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from cog_rag_cognee.models import QAResult
+
 
 @pytest.fixture
 def mock_service():
     """Create a mock PipelineService."""
     svc = MagicMock()
     svc.query = AsyncMock(
-        return_value=MagicMock(
+        return_value=QAResult(
             answer="Test answer",
             confidence=0.9,
             sources=[],
             mode="GRAPH_COMPLETION",
-            model_dump=lambda: {
-                "answer": "Test answer",
-                "confidence": 0.9,
-                "sources": [],
-                "mode": "GRAPH_COMPLETION",
-            },
         )
     )
     svc.search = AsyncMock(return_value=[])
     svc.add_text = AsyncMock(return_value={"status": "added", "chars": 10, "dataset": "main"})
     svc.add_bytes = AsyncMock(return_value={"status": "added", "file": "test.txt", "chars": 12})
     svc.cognify = AsyncMock(return_value={"main": "completed"})
+    svc.reset = AsyncMock()
     return svc
 
 
 @pytest.fixture
 def mock_graph_client():
-    """Create a mock GraphClient."""
+    """Create a mock async GraphClient."""
     gc = MagicMock()
-    gc.get_stats.return_value = {
+    gc.get_stats = AsyncMock(return_value={
         "nodes": 10,
         "edges": 15,
         "entity_types": {"Person": 5, "Organization": 3, "Location": 2},
-    }
-    gc.get_entities.return_value = [
+    })
+    gc.get_entities = AsyncMock(return_value=[
         {"id": 1, "label": "Alice", "type": "Person"},
         {"id": 2, "label": "Acme Corp", "type": "Organization"},
-    ]
-    gc.get_relationships.return_value = [
+    ])
+    gc.get_relationships = AsyncMock(return_value=[
         {"source": "Alice", "target": "Acme Corp", "type": "WORKS_AT"},
-    ]
+    ])
+    gc.close = AsyncMock()
     return gc
 
 
@@ -143,7 +141,7 @@ def test_graph_entities_with_filter(client, mock_graph_client):
 
 def test_graph_stats_fallback(client, mock_graph_client):
     """Graph stats returns zeros when Neo4j is unavailable."""
-    mock_graph_client.get_stats.side_effect = Exception("Connection refused")
+    mock_graph_client.get_stats = AsyncMock(side_effect=Exception("Connection refused"))
     resp = client.get("/api/v1/graph/stats")
     assert resp.status_code == 200
     data = resp.json()
@@ -233,7 +231,7 @@ def test_ingest_text_too_long(client):
 
 def test_graph_entities_fallback(client, mock_graph_client):
     """Graph entities returns empty lists when Neo4j is unavailable."""
-    mock_graph_client.get_entities.side_effect = Exception("Connection refused")
+    mock_graph_client.get_entities = AsyncMock(side_effect=Exception("Connection refused"))
     resp = client.get("/api/v1/graph/entities")
     assert resp.status_code == 200
     data = resp.json()
@@ -251,3 +249,34 @@ def test_filename_sanitized(client, mock_service):
     filename = call_args[0][1]
     assert "/" not in filename
     assert ".." not in filename
+
+
+def test_reset(client, mock_service):
+    """Reset endpoint calls service.reset()."""
+    resp = client.post("/api/v1/reset")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"
+    mock_service.reset.assert_called_once()
+
+
+def test_exception_handler_ingestion_error(client, mock_service):
+    """IngestionError returns 502 with error details."""
+    from cog_rag_cognee.exceptions import IngestionError
+
+    mock_service.add_text = AsyncMock(side_effect=IngestionError("Cognee down"))
+    resp = client.post("/api/v1/ingest", json={"text": "hello"})
+    assert resp.status_code == 502
+    data = resp.json()
+    assert data["error"] == "IngestionError"
+    assert "Cognee down" in data["detail"]
+
+
+def test_exception_handler_search_error(client, mock_service):
+    """SearchError returns 502 with error details."""
+    from cog_rag_cognee.exceptions import SearchError
+
+    mock_service.query = AsyncMock(side_effect=SearchError("Search failed"))
+    resp = client.post("/api/v1/query", json={"text": "test"})
+    assert resp.status_code == 502
+    data = resp.json()
+    assert data["error"] == "SearchError"

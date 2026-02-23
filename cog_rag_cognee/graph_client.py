@@ -1,34 +1,34 @@
-"""Neo4j driver wrapper for direct graph queries."""
+"""Neo4j async driver wrapper for direct graph queries."""
 from __future__ import annotations
 
 import logging
 
-from neo4j import GraphDatabase
+from neo4j import AsyncGraphDatabase
 
 logger = logging.getLogger(__name__)
 
 
 class GraphClient:
-    """Lightweight wrapper for direct Neo4j access via Cypher."""
+    """Lightweight async wrapper for direct Neo4j access via Cypher."""
 
     def __init__(self, uri: str, username: str, password: str) -> None:
-        self._driver = GraphDatabase.driver(uri, auth=(username, password))
+        self._driver = AsyncGraphDatabase.driver(uri, auth=(username, password))
 
-    def close(self) -> None:
+    async def close(self) -> None:
         """Close the Neo4j driver."""
-        self._driver.close()
+        await self._driver.close()
 
-    def health_check(self) -> bool:
+    async def health_check(self) -> bool:
         """Return True if Neo4j is reachable."""
         try:
-            with self._driver.session() as session:
-                session.run("RETURN 1")
+            async with self._driver.session() as session:
+                await session.run("RETURN 1")
             return True
         except Exception:
             logger.warning("Neo4j health check failed", exc_info=True)
             return False
 
-    def get_entities(
+    async def get_entities(
         self, limit: int = 200, entity_types: list[str] | None = None
     ) -> list[dict]:
         """Fetch nodes that have a name property.
@@ -51,11 +51,11 @@ class GraphClient:
             )
             params = {"limit": limit}
 
-        with self._driver.session() as session:
-            result = session.run(cypher, params)
-            return [dict(record) for record in result]
+        async with self._driver.session() as session:
+            result = await session.run(cypher, params)
+            return [dict(record) async for record in result]
 
-    def get_relationships(
+    async def get_relationships(
         self, limit: int = 500, entity_types: list[str] | None = None
     ) -> list[dict]:
         """Fetch relationships between named nodes.
@@ -80,11 +80,11 @@ class GraphClient:
             )
             params = {"limit": limit}
 
-        with self._driver.session() as session:
-            result = session.run(cypher, params)
-            return [dict(record) for record in result]
+        async with self._driver.session() as session:
+            result = await session.run(cypher, params)
+            return [dict(record) async for record in result]
 
-    def get_stats(self) -> dict:
+    async def get_stats(self) -> dict:
         """Return node/edge counts and entity type breakdown.
 
         Returns ``{nodes, edges, entity_types: {label: count}}``.
@@ -96,8 +96,9 @@ class GraphClient:
             "CALL { MATCH ()-[r]->() RETURN count(r) AS edges } "
             "RETURN types, edges"
         )
-        with self._driver.session() as session:
-            row = session.run(cypher).single()
+        async with self._driver.session() as session:
+            result = await session.run(cypher)
+            row = await result.single()
 
         entity_types: dict[str, int] = {}
         if row:

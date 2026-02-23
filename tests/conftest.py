@@ -47,7 +47,8 @@ if "cognee" not in sys.modules:
     sys.modules["cognee.modules.search.types"] = _types_mod
     sys.modules["cognee.modules.search.types.SearchType"] = _search_types_mod
 
-# Stub neo4j driver so graph_client.py can be imported without real neo4j package
+# Stub neo4j driver so graph_client.py can be imported without real neo4j package.
+# Supports both sync GraphDatabase and async AsyncGraphDatabase.
 if "neo4j" not in sys.modules:
     _neo4j_stub = types.ModuleType("neo4j")
 
@@ -56,6 +57,9 @@ if "neo4j" not in sys.modules:
 
     _neo4j_stub.GraphDatabase = type(  # type: ignore[attr-defined]
         "GraphDatabase", (), {"driver": staticmethod(_fake_driver)}
+    )
+    _neo4j_stub.AsyncGraphDatabase = type(  # type: ignore[attr-defined]
+        "AsyncGraphDatabase", (), {"driver": staticmethod(_fake_driver)}
     )
     sys.modules["neo4j"] = _neo4j_stub
 

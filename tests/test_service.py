@@ -125,3 +125,59 @@ async def test_reset(mock_cognee):
     await svc.reset()
 
     mock_cognee.prune.prune_data.assert_called_once()
+
+
+# --- Exception handling tests ---
+
+
+@pytest.mark.asyncio
+async def test_add_text_raises_ingestion_error():
+    """add_text wraps cognee errors in IngestionError."""
+    with patch("cog_rag_cognee.service.cognee") as mock:
+        mock.add = AsyncMock(side_effect=RuntimeError("connection lost"))
+        from cog_rag_cognee.exceptions import IngestionError
+        from cog_rag_cognee.service import PipelineService
+
+        svc = PipelineService()
+        with pytest.raises(IngestionError, match="Failed to add text"):
+            await svc.add_text("hello")
+
+
+@pytest.mark.asyncio
+async def test_cognify_raises_ingestion_error():
+    """cognify wraps cognee errors in IngestionError."""
+    with patch("cog_rag_cognee.service.cognee") as mock:
+        mock.cognify = AsyncMock(side_effect=RuntimeError("pipeline failed"))
+        from cog_rag_cognee.exceptions import IngestionError
+        from cog_rag_cognee.service import PipelineService
+
+        svc = PipelineService()
+        with pytest.raises(IngestionError, match="Cognify failed"):
+            await svc.cognify()
+
+
+@pytest.mark.asyncio
+async def test_search_raises_search_error():
+    """search wraps cognee errors in SearchError."""
+    with patch("cog_rag_cognee.service.cognee") as mock:
+        mock.search = AsyncMock(side_effect=RuntimeError("index missing"))
+        from cog_rag_cognee.exceptions import SearchError
+        from cog_rag_cognee.service import PipelineService
+
+        svc = PipelineService()
+        with pytest.raises(SearchError, match="Search failed"):
+            await svc.search("test")
+
+
+@pytest.mark.asyncio
+async def test_reset_raises_ingestion_error():
+    """reset wraps prune errors in IngestionError."""
+    with patch("cog_rag_cognee.service.cognee") as mock:
+        mock.prune = MagicMock()
+        mock.prune.prune_data = AsyncMock(side_effect=RuntimeError("storage locked"))
+        from cog_rag_cognee.exceptions import IngestionError
+        from cog_rag_cognee.service import PipelineService
+
+        svc = PipelineService()
+        with pytest.raises(IngestionError, match="Data reset failed"):
+            await svc.reset()

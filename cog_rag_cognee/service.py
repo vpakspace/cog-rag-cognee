@@ -10,6 +10,7 @@ from cognee.modules.search.types.SearchType import SearchType
 
 from cog_rag_cognee.config import get_settings
 from cog_rag_cognee.docling_loader import DoclingLoader
+from cog_rag_cognee.exceptions import IngestionError, SearchError
 from cog_rag_cognee.models import QAResult, SearchResult
 
 logger = logging.getLogger(__name__)
@@ -20,16 +21,24 @@ class PipelineService:
 
     async def add_text(self, text: str, dataset_name: str = "main") -> dict[str, Any]:
         """Add text data to Cognee."""
-        await cognee.add(text, dataset_name=dataset_name)
+        try:
+            await cognee.add(text, dataset_name=dataset_name)
+        except Exception as exc:
+            raise IngestionError(f"Failed to add text: {exc}") from exc
         logger.info("Added text (%d chars) to dataset '%s'", len(text), dataset_name)
         return {"status": "added", "chars": len(text), "dataset": dataset_name}
 
     async def add_file(self, file_path: str, dataset_name: str = "main") -> dict[str, Any]:
         """Add file content to Cognee via DoclingLoader."""
-        settings = get_settings()
-        loader = DoclingLoader(use_gpu=settings.docling_use_gpu)
-        result = loader.load(file_path)
-        await cognee.add(result.markdown, dataset_name=dataset_name)
+        try:
+            settings = get_settings()
+            loader = DoclingLoader(use_gpu=settings.docling_use_gpu)
+            result = loader.load(file_path)
+            await cognee.add(result.markdown, dataset_name=dataset_name)
+        except IngestionError:
+            raise
+        except Exception as exc:
+            raise IngestionError(f"Failed to add file '{file_path}': {exc}") from exc
         logger.info("Added file '%s' (%d chars)", file_path, len(result.markdown))
         return {
             "status": "added",
@@ -41,19 +50,29 @@ class PipelineService:
         self, data: bytes, filename: str, dataset_name: str = "main"
     ) -> dict[str, Any]:
         """Add uploaded file bytes to Cognee via DoclingLoader."""
-        settings = get_settings()
-        loader = DoclingLoader(use_gpu=settings.docling_use_gpu)
-        result = loader.load_bytes(data, filename)
-        await cognee.add(result.markdown, dataset_name=dataset_name)
+        try:
+            settings = get_settings()
+            loader = DoclingLoader(use_gpu=settings.docling_use_gpu)
+            result = loader.load_bytes(data, filename)
+            await cognee.add(result.markdown, dataset_name=dataset_name)
+        except IngestionError:
+            raise
+        except Exception as exc:
+            raise IngestionError(f"Failed to add bytes '{filename}': {exc}") from exc
         logger.info("Added bytes '%s' (%d chars)", filename, len(result.markdown))
         return {"status": "added", "file": filename, "chars": len(result.markdown)}
 
     async def cognify(self, dataset_name: str | None = None) -> dict[str, Any]:
         """Run Cognee ECL pipeline: extract entities, build graph, embed."""
-        kwargs: dict[str, Any] = {}
-        if dataset_name:
-            kwargs["datasets"] = [dataset_name]
-        result = await cognee.cognify(**kwargs)
+        try:
+            kwargs: dict[str, Any] = {}
+            if dataset_name:
+                kwargs["datasets"] = [dataset_name]
+            result = await cognee.cognify(**kwargs)
+        except IngestionError:
+            raise
+        except Exception as exc:
+            raise IngestionError(f"Cognify failed: {exc}") from exc
         logger.info("Cognify completed: %s", result)
         return result
 
@@ -64,8 +83,13 @@ class PipelineService:
         limit: int = 5,
     ) -> list[SearchResult]:
         """Search Cognee knowledge graph."""
-        st = SearchType(search_type) if isinstance(search_type, str) else search_type
-        raw_results = await cognee.search(query, query_type=st, top_k=limit)
+        try:
+            st = SearchType(search_type) if isinstance(search_type, str) else search_type
+            raw_results = await cognee.search(query, query_type=st, top_k=limit)
+        except SearchError:
+            raise
+        except Exception as exc:
+            raise SearchError(f"Search failed: {exc}") from exc
         results = []
         for r in raw_results:
             content, score = self._extract_result(r)
@@ -136,10 +160,16 @@ class PipelineService:
 
     async def reset(self) -> None:
         """Reset all Cognee data."""
-        await cognee.prune.prune_data()
+        try:
+            await cognee.prune.prune_data()
+        except Exception as exc:
+            raise IngestionError(f"Data reset failed: {exc}") from exc
         logger.info("Data reset completed")
 
     async def reset_system(self) -> None:
         """Full system reset including metadata."""
-        await cognee.prune.prune_system(metadata=True)
+        try:
+            await cognee.prune.prune_system(metadata=True)
+        except Exception as exc:
+            raise IngestionError(f"System reset failed: {exc}") from exc
         logger.info("System reset completed")

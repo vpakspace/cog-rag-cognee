@@ -1,5 +1,9 @@
 """Domain models for the Cog-RAG Cognee pipeline."""
 
+from __future__ import annotations
+
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -32,12 +36,26 @@ class IngestResult(BaseModel):
     error: str | None = None
 
 
+class IngestResponse(BaseModel):
+    """Response for /ingest and /ingest-file endpoints."""
+
+    ingest: dict[str, Any]
+    cognify: str
+
+
 class GraphStats(BaseModel):
     """Knowledge graph statistics."""
 
     nodes: int = 0
     edges: int = 0
     entity_types: dict[str, int] = Field(default_factory=dict)
+
+
+class GraphEntitiesResponse(BaseModel):
+    """Response for /graph/entities endpoint."""
+
+    nodes: list[dict[str, Any]] = Field(default_factory=list)
+    edges: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class HealthStatus(BaseModel):

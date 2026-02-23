@@ -1,14 +1,10 @@
-"""Streamlit UI for cog-rag-cognee — 4 tabs."""
+"""Streamlit UI for cog-rag-cognee — 4 tabs, all data via API."""
 from __future__ import annotations
-
-import asyncio
 
 import httpx
 import streamlit as st
 
-from cog_rag_cognee.cognee_setup import apply_cognee_env
 from cog_rag_cognee.config import get_settings
-from cog_rag_cognee.service import PipelineService
 from ui.components.graph_viz import render_graph
 from ui.i18n import get_translator
 
@@ -23,15 +19,18 @@ st.sidebar.markdown("---")
 st.sidebar.markdown(f"**{t('app_title')}** v0.1.0")
 st.sidebar.markdown("100% local stack")
 
-
-@st.cache_resource
-def init_service() -> PipelineService:
-    settings = get_settings()
-    apply_cognee_env(settings)
-    return PipelineService()
+# --- API base URL ---
+_settings = get_settings()
+API_BASE = f"http://{_settings.api_host}:{_settings.api_port}/api/v1"
 
 
-svc = init_service()
+def _api_headers() -> dict[str, str]:
+    """Return auth headers if API key is configured."""
+    headers: dict[str, str] = {}
+    if _settings.api_key:
+        headers["X-API-Key"] = _settings.api_key
+    return headers
+
 
 # --- Tabs ---
 tab_upload, tab_search, tab_graph, tab_settings = st.tabs(
@@ -50,21 +49,34 @@ with tab_upload:
     if st.button(t("upload_btn")):
         with st.spinner("Processing..."):
             if text_input.strip():
-                result = asyncio.run(svc.add_text(text_input))
-                cognify_result = asyncio.run(svc.cognify())
-                st.success(t("upload_success"))
-                st.json({"ingest": result, "cognify": str(cognify_result)})
+                try:
+                    resp = httpx.post(
+                        f"{API_BASE}/ingest",
+                        json={"text": text_input},
+                        headers=_api_headers(),
+                        timeout=120,
+                    )
+                    if resp.status_code == 200:
+                        st.success(t("upload_success"))
+                        st.json(resp.json())
+                    else:
+                        st.error(f"{t('upload_error')}: {resp.text}")
+                except Exception as exc:
+                    st.error(f"{t('upload_error')}: {exc}")
             elif uploaded_file is not None:
                 try:
                     file_bytes = uploaded_file.read()
-                    result = asyncio.run(
-                        svc.add_bytes(file_bytes, uploaded_file.name)
+                    resp = httpx.post(
+                        f"{API_BASE}/ingest-file",
+                        files={"file": (uploaded_file.name, file_bytes)},
+                        headers=_api_headers(),
+                        timeout=120,
                     )
-                    cognify_result = asyncio.run(svc.cognify())
-                    st.success(t("upload_success"))
-                    st.json({"ingest": result, "cognify": str(cognify_result)})
-                except ImportError:
-                    st.error(t("upload_docling_missing"))
+                    if resp.status_code == 200:
+                        st.success(t("upload_success"))
+                        st.json(resp.json())
+                    else:
+                        st.error(f"{t('upload_error')}: {resp.text}")
                 except Exception as exc:
                     st.error(f"{t('upload_error')}: {exc}")
             else:
@@ -84,32 +96,45 @@ with tab_search:
 
     if st.button(t("search_btn")) and query:
         with st.spinner("Searching..."):
-            qa = asyncio.run(svc.query(query, search_type=search_mode))
+            try:
+                resp = httpx.post(
+                    f"{API_BASE}/query",
+                    json={"text": query, "mode": search_mode},
+                    headers=_api_headers(),
+                    timeout=60,
+                )
+                if resp.status_code == 200:
+                    qa = resp.json()
 
-            st.subheader(t("search_answer"))
-            st.text(qa.answer)
+                    st.subheader(t("search_answer"))
+                    st.text(qa["answer"])
 
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric(t("search_confidence"), f"{qa.confidence:.0%}")
-            with col2:
-                st.metric(t("search_results"), len(qa.sources))
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric(t("search_confidence"), f"{qa['confidence']:.0%}")
+                    with col2:
+                        st.metric(t("search_results"), len(qa.get("sources", [])))
 
-            if qa.sources:
-                with st.expander(t("search_sources")):
-                    for i, src in enumerate(qa.sources, 1):
-                        st.markdown(f"**{i}.** [{src.score:.2f}] {src.content[:200]}")
+                    if qa.get("sources"):
+                        with st.expander(t("search_sources")):
+                            for i, src in enumerate(qa["sources"], 1):
+                                st.markdown(
+                                    f"**{i}.** [{src['score']:.2f}] {src['content'][:200]}"
+                                )
+                else:
+                    st.error(f"Search error: {resp.text}")
+            except Exception as exc:
+                st.error(f"Search error: {exc}")
 
 # --- Tab 3: Graph Explorer ---
 with tab_graph:
     st.header(t("graph_header"))
 
-    settings = get_settings()
-    api_base = f"http://{settings.api_host}:{settings.api_port}/api/v1"
-
     # Fetch stats for sidebar filter
     try:
-        stats_resp = httpx.get(f"{api_base}/graph/stats", timeout=5)
+        stats_resp = httpx.get(
+            f"{API_BASE}/graph/stats", headers=_api_headers(), timeout=5
+        )
         stats_data = stats_resp.json() if stats_resp.status_code == 200 else {}
     except Exception:
         stats_data = {}
@@ -144,7 +169,10 @@ with tab_graph:
                 if selected_types and selected_types != entity_types_available:
                     graph_params["entity_types"] = ",".join(selected_types)
                 resp = httpx.get(
-                    f"{api_base}/graph/entities", params=graph_params, timeout=10
+                    f"{API_BASE}/graph/entities",
+                    params=graph_params,
+                    headers=_api_headers(),
+                    timeout=10,
                 )
                 if resp.status_code == 200:
                     graph_data = resp.json()
@@ -174,5 +202,13 @@ with tab_settings:
     st.markdown("---")
     if st.button(t("settings_clear"), type="secondary"):
         if st.checkbox(t("settings_clear_confirm")):
-            asyncio.run(svc.reset())
-            st.success("Data cleared!")
+            try:
+                resp = httpx.post(
+                    f"{API_BASE}/reset", headers=_api_headers(), timeout=30
+                )
+                if resp.status_code == 200:
+                    st.success("Data cleared!")
+                else:
+                    st.error(f"Reset failed: {resp.text}")
+            except Exception as exc:
+                st.error(f"Reset failed: {exc}")
