@@ -1,12 +1,17 @@
 """Dependency injection for FastAPI."""
 from __future__ import annotations
 
+import hmac
+import logging
+
 from fastapi import HTTPException, Security
 from fastapi.security import APIKeyHeader
 
 from cog_rag_cognee.config import get_settings
 from cog_rag_cognee.graph_client import GraphClient
 from cog_rag_cognee.service import PipelineService
+
+logger = logging.getLogger(__name__)
 
 _service: PipelineService | None = None
 _graph_client: GraphClient | None = None
@@ -21,7 +26,7 @@ async def verify_api_key(
     settings = get_settings()
     if not settings.api_key:
         return None  # Auth disabled
-    if api_key != settings.api_key:
+    if not api_key or not hmac.compare_digest(api_key, settings.api_key):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
     return api_key
 

@@ -25,6 +25,8 @@ async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     settings = get_settings()
     apply_cognee_env(settings)
+    if not settings.api_key:
+        logger.warning("API_KEY is not set — all endpoints are unauthenticated!")
     logger.info("cog-rag-cognee API started on port %d", settings.api_port)
     yield
     # Shutdown: close GraphClient connection pool
