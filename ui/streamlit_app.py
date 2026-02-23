@@ -204,7 +204,10 @@ with tab_settings:
         if st.checkbox(t("settings_clear_confirm")):
             try:
                 resp = httpx.post(
-                    f"{API_BASE}/reset", headers=_api_headers(), timeout=30
+                    f"{API_BASE}/reset",
+                    json={"confirm": True},
+                    headers=_api_headers(),
+                    timeout=30,
                 )
                 if resp.status_code == 200:
                     st.success("Data cleared!")
