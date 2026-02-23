@@ -72,6 +72,103 @@ async def test_query_full_pipeline(mock_cognee):
 
 
 @pytest.mark.asyncio
+async def test_query_no_results(mock_cognee):
+    """query returns fallback answer when search yields nothing."""
+    mock_cognee.search = AsyncMock(return_value=[])
+    from cog_rag_cognee.service import PipelineService
+
+    svc = PipelineService()
+    qa = await svc.query("Unknown topic")
+
+    assert qa.answer == "No relevant information found."
+    assert qa.confidence == 0.0
+
+
+@pytest.mark.asyncio
+async def test_list_datasets_error():
+    """list_datasets returns empty list on exception."""
+    with patch("cog_rag_cognee.service.cognee") as mock:
+        mock.datasets.list_datasets = AsyncMock(side_effect=RuntimeError("db down"))
+        from cog_rag_cognee.service import PipelineService
+
+        svc = PipelineService()
+        result = await svc.list_datasets()
+
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_list_datasets_success():
+    """list_datasets returns dataset names."""
+    ds1 = MagicMock()
+    ds1.name = "main"
+    ds2 = MagicMock()
+    ds2.name = "papers"
+    with patch("cog_rag_cognee.service.cognee") as mock:
+        mock.datasets.list_datasets = AsyncMock(return_value=[ds1, ds2])
+        from cog_rag_cognee.service import PipelineService
+
+        svc = PipelineService()
+        result = await svc.list_datasets()
+
+    assert result == ["main", "papers"]
+
+
+@pytest.mark.asyncio
+async def test_add_file_reraises_ingestion_error():
+    """add_file re-raises IngestionError without wrapping."""
+    from cog_rag_cognee.exceptions import IngestionError
+    from cog_rag_cognee.service import PipelineService
+
+    with patch("cog_rag_cognee.service.cognee"), \
+         patch("cog_rag_cognee.service._get_docling_loader") as mock_loader:
+        mock_loader.return_value.load.side_effect = IngestionError("bad format")
+        svc = PipelineService()
+        with pytest.raises(IngestionError, match="bad format"):
+            await svc.add_file("/tmp/bad.pdf")
+
+
+@pytest.mark.asyncio
+async def test_add_bytes_reraises_ingestion_error():
+    """add_bytes re-raises IngestionError without wrapping."""
+    from cog_rag_cognee.exceptions import IngestionError
+    from cog_rag_cognee.service import PipelineService
+
+    with patch("cog_rag_cognee.service.cognee"), \
+         patch("cog_rag_cognee.service._get_docling_loader") as mock_loader:
+        mock_loader.return_value.load_bytes.side_effect = IngestionError("corrupt")
+        svc = PipelineService()
+        with pytest.raises(IngestionError, match="corrupt"):
+            await svc.add_bytes(b"data", "bad.pdf")
+
+
+@pytest.mark.asyncio
+async def test_cognify_reraises_ingestion_error():
+    """cognify re-raises IngestionError without double-wrapping."""
+    from cog_rag_cognee.exceptions import IngestionError
+    from cog_rag_cognee.service import PipelineService
+
+    with patch("cog_rag_cognee.service.cognee") as mock:
+        mock.cognify = AsyncMock(side_effect=IngestionError("pipeline error"))
+        svc = PipelineService()
+        with pytest.raises(IngestionError, match="pipeline error"):
+            await svc.cognify()
+
+
+@pytest.mark.asyncio
+async def test_search_reraises_search_error():
+    """search re-raises SearchError without double-wrapping."""
+    from cog_rag_cognee.exceptions import SearchError
+    from cog_rag_cognee.service import PipelineService
+
+    with patch("cog_rag_cognee.service.cognee") as mock:
+        mock.search = AsyncMock(side_effect=SearchError("index broken"))
+        svc = PipelineService()
+        with pytest.raises(SearchError, match="index broken"):
+            await svc.search("test")
+
+
+@pytest.mark.asyncio
 async def test_add_file_uses_docling(mock_cognee, tmp_path):
     """add_file delegates to DoclingLoader then calls cognee.add."""
     f = tmp_path / "doc.txt"
