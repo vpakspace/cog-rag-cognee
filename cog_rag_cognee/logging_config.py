@@ -7,6 +7,15 @@ import sys
 from datetime import UTC, datetime
 
 
+class _RequestIdFilter(logging.Filter):
+    """Inject request_id into every log record for correlation."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        from cog_rag_cognee.request_context import request_id_var
+        record.request_id = request_id_var.get("-")  # type: ignore[attr-defined]
+        return True
+
+
 class _JSONFormatter(logging.Formatter):
     """Emit each log record as a single JSON line."""
 
@@ -43,7 +52,9 @@ def setup_logging(*, json_logs: bool = False, log_level: str = "INFO") -> None:
         handler.setFormatter(_JSONFormatter())
     else:
         handler.setFormatter(
-            logging.Formatter("%(asctime)s %(levelname)-8s %(name)s — %(message)s")
+            logging.Formatter("%(asctime)s %(levelname)-8s [%(request_id)s] %(name)s — %(message)s")
         )
 
     root.addHandler(handler)
+    handler.addFilter(_RequestIdFilter())
+    root.addFilter(_RequestIdFilter())
