@@ -24,6 +24,7 @@ def mock_service():
     svc.add_bytes = AsyncMock(return_value={"status": "added", "file": "test.txt", "chars": 12})
     svc.cognify = AsyncMock(return_value={"main": "completed"})
     svc.reset = AsyncMock()
+    svc.list_datasets = AsyncMock(return_value=["main", "papers", "docs"])
     return svc
 
 
@@ -294,6 +295,15 @@ def test_reset_rejects_false_confirmation(client):
     """Reset endpoint rejects confirm=false."""
     resp = client.post("/api/v1/reset", json={"confirm": False})
     assert resp.status_code == 400
+
+
+def test_list_datasets(client, mock_service):
+    """Datasets endpoint returns list of dataset names."""
+    resp = client.get("/api/v1/datasets")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data == ["main", "papers", "docs"]
+    mock_service.list_datasets.assert_called_once()
 
 
 def test_health_response_model(client, mock_graph_client):

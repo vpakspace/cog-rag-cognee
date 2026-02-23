@@ -206,6 +206,15 @@ class PipelineService:
             mode=search_type,
         )
 
+    async def list_datasets(self) -> list[str]:
+        """Return names of available Cognee datasets."""
+        try:
+            datasets = await cognee.datasets.list_datasets()
+            return [ds.name for ds in datasets] if datasets else []
+        except Exception as exc:
+            logger.warning("Failed to list datasets: %s", exc)
+            return []
+
     async def reset(self) -> None:
         """Reset all Cognee data."""
         try:

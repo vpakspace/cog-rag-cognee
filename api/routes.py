@@ -118,6 +118,12 @@ async def ingest_file(
     return IngestResponse(ingest=result, cognify=str(cognify_result))
 
 
+@router.get("/datasets", response_model=list[str])
+async def datasets(svc: PipelineService = Depends(get_service)):
+    """List available Cognee datasets."""
+    return await svc.list_datasets()
+
+
 @router.get("/graph/stats", response_model=GraphStats)
 async def graph_stats(gc: GraphClient = Depends(get_graph_client)):
     """Return knowledge graph statistics from Neo4j."""
