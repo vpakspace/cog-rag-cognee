@@ -332,6 +332,7 @@ def test_health_response_model(client, mock_graph_client):
     assert "status" in data
     assert "neo4j" in data
     assert "ollama" in data
+    assert "lancedb" not in data  # embedded DB, no health-check
 
 
 def test_exception_handler_ingestion_error(client, mock_service):

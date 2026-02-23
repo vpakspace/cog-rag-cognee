@@ -64,4 +64,3 @@ class HealthStatus(BaseModel):
     status: str = "ok"
     ollama: bool = False
     neo4j: bool = False
-    lancedb: bool = False
