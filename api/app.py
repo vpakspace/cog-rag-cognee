@@ -31,6 +31,11 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     apply_cognee_env(settings)
     if not settings.api_key:
+        if not settings.debug and not settings.allow_anonymous:
+            raise RuntimeError(
+                "API_KEY is required in production. "
+                "Set API_KEY, enable DEBUG, or set ALLOW_ANONYMOUS=true."
+            )
         logger.warning("API_KEY is not set — all endpoints are unauthenticated!")
 
     # Check dependencies (non-blocking — log warnings only)

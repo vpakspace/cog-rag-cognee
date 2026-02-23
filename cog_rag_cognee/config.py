@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     api_port: int = 8508
     cors_origins: str = "http://localhost:8506"
     debug: bool = False
+    allow_anonymous: bool = False
     max_upload_bytes: int = 50 * 1024 * 1024  # 50 MB
 
     # UI

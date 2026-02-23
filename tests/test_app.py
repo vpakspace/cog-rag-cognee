@@ -571,3 +571,51 @@ def test_exception_handler_shows_details_in_debug(mock_service, mock_graph_clien
         get_settings.cache_clear()
         set_service(None)
         set_graph_client(None)
+
+
+def test_startup_refuses_without_api_key_in_prod(monkeypatch):
+    """In non-debug mode, startup must fail if API_KEY is empty and ALLOW_ANONYMOUS is false."""
+    monkeypatch.setenv("API_KEY", "")
+    monkeypatch.setenv("DEBUG", "false")
+    monkeypatch.setenv("ALLOW_ANONYMOUS", "false")
+    from cog_rag_cognee.config import get_settings
+    get_settings.cache_clear()
+
+    from api.app import create_app
+    from api.deps import set_graph_client, set_service
+
+    set_service(MagicMock())
+    set_graph_client(MagicMock())
+
+    app = create_app()
+    with pytest.raises(Exception, match="API_KEY.*required"):
+        with TestClient(app):
+            pass
+
+    set_service(None)
+    set_graph_client(None)
+    get_settings.cache_clear()
+
+
+def test_startup_allows_anonymous_when_explicit(monkeypatch, mock_service, mock_graph_client):
+    """When ALLOW_ANONYMOUS=true, startup should succeed without API_KEY."""
+    monkeypatch.setenv("API_KEY", "")
+    monkeypatch.setenv("DEBUG", "false")
+    monkeypatch.setenv("ALLOW_ANONYMOUS", "true")
+    from cog_rag_cognee.config import get_settings
+    get_settings.cache_clear()
+
+    from api.app import create_app
+    from api.deps import set_graph_client, set_service
+
+    set_service(mock_service)
+    set_graph_client(mock_graph_client)
+
+    app = create_app()
+    with TestClient(app) as c:
+        resp = c.get("/api/v1/liveness")
+        assert resp.status_code == 200
+
+    set_service(None)
+    set_graph_client(None)
+    get_settings.cache_clear()
