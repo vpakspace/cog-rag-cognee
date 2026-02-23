@@ -6,6 +6,8 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -83,7 +85,21 @@ async def cograg_error_handler(request: Request, exc: CogRagError) -> JSONRespon
 
     return JSONResponse(
         status_code=status_code,
-        content={"error": type(exc).__name__, "detail": detail},
+        content={"code": exc.code, "error": type(exc).__name__, "detail": detail},
+    )
+
+
+async def validation_error_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Normalize Pydantic validation errors to consistent {code, error, detail} shape."""
+    return JSONResponse(
+        status_code=422,
+        content={
+            "code": "ERR_VALIDATION",
+            "error": "ValidationError",
+            "detail": jsonable_encoder(exc.errors()),
+        },
     )
 
 
@@ -103,8 +119,9 @@ def create_app() -> FastAPI:
     app.add_middleware(SlowAPIMiddleware)
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
-    # Custom exception handler
+    # Custom exception handlers
     app.add_exception_handler(CogRagError, cograg_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RequestValidationError, validation_error_handler)  # type: ignore[arg-type]
 
     # CORS
     origins = [o.strip() for o in settings.cors_origins.split(",")]
@@ -128,7 +145,12 @@ def create_app() -> FastAPI:
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
         token = request_id_var.set(request_id)
         try:
-            response = await call_next(request)
+            try:
+                response = await call_next(request)
+            except RequestValidationError as exc:
+                # BaseHTTPMiddleware may propagate validation errors before
+                # ExceptionMiddleware catches them — handle here as fallback.
+                response = await validation_error_handler(request, exc)
             response.headers["X-Request-ID"] = request_id
             return response
         finally:

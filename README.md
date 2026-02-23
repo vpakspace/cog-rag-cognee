@@ -270,7 +270,7 @@ Results are saved to `benchmark/results.json`. Questions are in `benchmark/quest
 ## Tests
 
 ```bash
-pytest tests/ -v --cov=cog_rag_cognee --cov=api   # 182 tests, 100% coverage
+pytest tests/ -v --cov=cog_rag_cognee --cov=api   # 196 tests, 100% coverage
 ruff check .                                        # Lint
 ```
 
