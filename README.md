@@ -76,7 +76,7 @@ export DOCLING_USE_GPU=true
 
 ## Prerequisites
 
-- Python 3.10+
+- Python 3.11+
 - Docker & Docker Compose
 - Ollama (installed locally or via Docker)
 
@@ -145,7 +145,9 @@ docker run -d --name neo4j -p 7474:7474 -p 7687:7687 \
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/health` | Health check |
+| GET | `/api/v1/health` | Health check (Neo4j + Ollama) |
+| GET | `/api/v1/liveness` | Liveness probe (always 200) |
+| GET | `/api/v1/readiness` | Readiness probe (checks dependencies) |
 | POST | `/api/v1/ingest` | Upload text + Cognify |
 | POST | `/api/v1/ingest-file` | Upload file (multipart) + Cognify |
 | POST | `/api/v1/query` | RAG: search + generate answer |
@@ -211,10 +213,13 @@ cog-rag-cognee/
 │   ├── docling_loader.py     # Document loader (Docling, optional GPU)
 │   ├── cognee_setup.py       # Cognee SDK configuration
 │   ├── ontology.py           # OWL/RDF ontology loader
-│   └── exceptions.py         # Custom exceptions
+│   ├── exceptions.py         # Custom exceptions with error codes
+│   ├── health.py             # External service health checks
+│   ├── logging_config.py     # Structured logging (JSON/text, request_id)
+│   └── request_context.py    # Request-scoped ContextVars
 ├── api/
 │   ├── app.py                # FastAPI factory + lifespan
-│   ├── routes.py             # REST endpoints (9)
+│   ├── routes.py             # REST endpoints (12)
 │   └── deps.py               # Dependency injection (service + graph_client)
 ├── ui/
 │   ├── streamlit_app.py      # 4-tab UI
@@ -229,7 +234,7 @@ cog-rag-cognee/
 │   └── example.owl           # Example domain ontology
 ├── data/                     # Sample documents (EN/RU)
 ├── benchmark/                # Evaluation questions
-├── tests/                    # 203 pytest tests
+├── tests/                    # 249 pytest tests
 ├── docker-compose.yml        # Neo4j + Ollama
 ├── requirements.txt
 ├── pyproject.toml
@@ -270,7 +275,7 @@ Results are saved to `benchmark/results.json`. Questions are in `benchmark/quest
 ## Tests
 
 ```bash
-pytest tests/ -v --cov=cog_rag_cognee --cov=api   # 203 tests, 100% coverage
+pytest tests/ -v --cov=cog_rag_cognee --cov=api   # 249 tests
 ruff check .                                        # Lint
 ```
 
@@ -292,6 +297,9 @@ All settings via environment variables or `.env` file. See `.env.example` for th
 | `VECTOR_DB_PROVIDER` | `lancedb` | Vector store backend |
 | `ENABLE_BACKEND_ACCESS_CONTROL` | `false` | Cognee multi-user mode |
 | `DOCLING_USE_GPU` | `false` | GPU acceleration for document parsing |
+| `COGNEE_TIMEOUT` | `300` | Timeout for cognee operations (10-3600 s) |
+| `NEO4J_TIMEOUT` | `30` | Timeout per Neo4j operation (1-300 s) |
+| `ALLOW_ANONYMOUS` | `false` | Allow API access without API_KEY |
 
 ## Deferred Features
 
