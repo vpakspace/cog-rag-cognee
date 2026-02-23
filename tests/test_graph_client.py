@@ -315,6 +315,16 @@ class TestRetry:
         with pytest.raises(TimeoutError):
             await _retry(slow_func, timeout=0.1, max_retries=0)
 
+    @pytest.mark.asyncio
+    async def test_retry_without_timeout_calls_func_directly(self):
+        """_retry with timeout=None executes func without asyncio.timeout wrapper."""
+        from cog_rag_cognee.graph_client import _retry
+
+        func = AsyncMock(return_value="result")
+        result = await _retry(func, max_retries=0, timeout=None)
+        assert result == "result"
+        func.assert_called_once_with()
+
 
 class TestClose:
     @pytest.mark.asyncio

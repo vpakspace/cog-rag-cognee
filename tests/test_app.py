@@ -129,6 +129,17 @@ def test_readiness_503_when_neo4j_down(client, mock_graph_client):
     assert data["checks"]["neo4j"] is False
 
 
+def test_readiness_503_when_neo4j_raises(client, mock_graph_client, monkeypatch):
+    """Readiness returns 503 with neo4j=false when health_check raises Exception."""
+    mock_graph_client.health_check = AsyncMock(side_effect=Exception("connection refused"))
+    monkeypatch.setattr("api.routes.check_ollama", AsyncMock(return_value=True))
+    resp = client.get("/api/v1/readiness")
+    assert resp.status_code == 503
+    data = resp.json()
+    assert data["status"] == "not_ready"
+    assert data["checks"]["neo4j"] is False
+
+
 def test_query(client):
     """Query endpoint returns answer with confidence."""
     resp = client.post("/api/v1/query", json={"text": "What is Cognee?"})
