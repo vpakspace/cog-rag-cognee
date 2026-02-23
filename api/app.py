@@ -152,6 +152,9 @@ def create_app() -> FastAPI:
                 # ExceptionMiddleware catches them — handle here as fallback.
                 response = await validation_error_handler(request, exc)
             response.headers["X-Request-ID"] = request_id
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Cache-Control"] = "no-store"
             return response
         finally:
             request_id_var.reset(token)

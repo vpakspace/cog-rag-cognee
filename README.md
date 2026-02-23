@@ -229,7 +229,7 @@ cog-rag-cognee/
 │   └── example.owl           # Example domain ontology
 ├── data/                     # Sample documents (EN/RU)
 ├── benchmark/                # Evaluation questions
-├── tests/                    # 173 pytest tests
+├── tests/                    # 203 pytest tests
 ├── docker-compose.yml        # Neo4j + Ollama
 ├── requirements.txt
 ├── pyproject.toml
@@ -270,7 +270,7 @@ Results are saved to `benchmark/results.json`. Questions are in `benchmark/quest
 ## Tests
 
 ```bash
-pytest tests/ -v --cov=cog_rag_cognee --cov=api   # 196 tests, 100% coverage
+pytest tests/ -v --cov=cog_rag_cognee --cov=api   # 203 tests, 100% coverage
 ruff check .                                        # Lint
 ```
 
