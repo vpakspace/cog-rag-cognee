@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     debug: bool = False
     allow_anonymous: bool = False
     max_upload_bytes: int = 50 * 1024 * 1024  # 50 MB
+    rate_limit_per_minute: int = 60
 
     # UI
     ui_port: int = 8506

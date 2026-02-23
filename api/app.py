@@ -135,8 +135,12 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Rate limiting
-    app.state.limiter = limiter
+    # Rate limiting — use configured value (module-level limiter is the fallback)
+    configured_limiter = Limiter(
+        key_func=get_remote_address,
+        default_limits=[f"{settings.rate_limit_per_minute}/minute"],
+    )
+    app.state.limiter = configured_limiter
     app.add_middleware(SlowAPIMiddleware)
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 

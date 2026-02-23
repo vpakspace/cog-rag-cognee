@@ -5,8 +5,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from cog_rag_cognee.models import QAResult
 
@@ -32,12 +30,16 @@ def rate_limited_client():
     set_service(svc)
     set_graph_client(gc)
 
-    # Temporarily patch the limiter with a very tight limit
-    import api.app as app_module
+    # Use config to set a tight rate limit
+    import os
 
-    original_limiter = app_module.limiter
-    tight_limiter = Limiter(key_func=get_remote_address, default_limits=["2/minute"])
-    app_module.limiter = tight_limiter
+    original = os.environ.get("RATE_LIMIT_PER_MINUTE")
+    os.environ["RATE_LIMIT_PER_MINUTE"] = "2"
+
+    # Clear settings cache so new value is picked up
+    from cog_rag_cognee.config import get_settings
+
+    get_settings.cache_clear()
 
     from api.app import create_app
 
@@ -45,7 +47,11 @@ def rate_limited_client():
     with TestClient(app) as c:
         yield c
 
-    app_module.limiter = original_limiter
+    if original is not None:
+        os.environ["RATE_LIMIT_PER_MINUTE"] = original
+    else:
+        os.environ.pop("RATE_LIMIT_PER_MINUTE", None)
+    get_settings.cache_clear()
     set_service(None)
     set_graph_client(None)
 
