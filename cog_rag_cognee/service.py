@@ -223,10 +223,3 @@ class PipelineService:
             raise IngestionError(f"Data reset failed: {exc}") from exc
         logger.info("Data reset completed")
 
-    async def reset_system(self) -> None:
-        """Full system reset including metadata."""
-        try:
-            await cognee.prune.prune_system(metadata=True)
-        except Exception as exc:
-            raise IngestionError(f"System reset failed: {exc}") from exc
-        logger.info("System reset completed")
