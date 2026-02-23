@@ -482,3 +482,32 @@ async def test_cognify_with_dataset_name():
     call_kwargs = mock.cognify.call_args[1]
     assert call_kwargs["datasets"] == ["papers"]
     assert "papers" in result
+
+
+@pytest.mark.asyncio
+async def test_search_invalid_search_type_raises_search_error():
+    """search() wraps invalid SearchType in SearchError, not raw ValueError."""
+    with patch("cog_rag_cognee.service.cognee"):
+        from cog_rag_cognee.exceptions import SearchError
+        from cog_rag_cognee.service import PipelineService
+
+        svc = PipelineService()
+        with pytest.raises(SearchError, match="Unknown search type"):
+            await svc.search("test", search_type="BOGUS_TYPE")
+
+
+@pytest.mark.asyncio
+async def test_add_file_propagates_dataset_name():
+    """add_file forwards dataset_name to cognee.add."""
+    with (
+        patch("cog_rag_cognee.service.cognee") as mock_cognee,
+        patch("cog_rag_cognee.service._get_docling_loader") as mock_loader,
+    ):
+        mock_loader.return_value.load.return_value.markdown = "content"
+        mock_cognee.add = AsyncMock()
+        from cog_rag_cognee.service import PipelineService
+
+        svc = PipelineService()
+        await svc.add_file("/tmp/notes.txt", dataset_name="research")
+
+    mock_cognee.add.assert_called_once_with("content", dataset_name="research")

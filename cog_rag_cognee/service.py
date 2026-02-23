@@ -141,6 +141,9 @@ class PipelineService:
         """Search Cognee knowledge graph."""
         try:
             st = SearchType(search_type) if isinstance(search_type, str) else search_type
+        except ValueError as exc:
+            raise SearchError(f"Unknown search type: {search_type}") from exc
+        try:
             t = get_settings().cognee_timeout
             raw_results = await retry_transient(
                 cognee.search, query, query_type=st, top_k=limit, timeout=t
