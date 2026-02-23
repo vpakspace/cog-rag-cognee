@@ -417,3 +417,52 @@ async def test_retry_does_not_retry_value_error():
     with pytest.raises(ValueError, match="bad input"):
         await retry_transient(func, max_retries=3, base_delay=0)
     assert func.call_count == 1
+
+
+# --- Coverage gap tests: service.py lines 87-88, 106-107, 116 ---
+
+
+@pytest.mark.asyncio
+async def test_add_file_wraps_generic_exception():
+    """add_file wraps non-IngestionError in IngestionError (lines 87-88)."""
+    from cog_rag_cognee.exceptions import IngestionError
+    from cog_rag_cognee.service import PipelineService
+
+    with patch("cog_rag_cognee.service.cognee") as mock_cognee, \
+         patch("cog_rag_cognee.service._get_docling_loader") as mock_loader:
+        mock_loader.return_value.load.return_value.markdown = "text"
+        mock_cognee.add = AsyncMock(side_effect=RuntimeError("conn lost"))
+        svc = PipelineService()
+        with pytest.raises(IngestionError, match="Failed to add file"):
+            await svc.add_file("/tmp/test.txt")
+
+
+@pytest.mark.asyncio
+async def test_add_bytes_wraps_generic_exception():
+    """add_bytes wraps non-IngestionError in IngestionError (lines 106-107)."""
+    from cog_rag_cognee.exceptions import IngestionError
+    from cog_rag_cognee.service import PipelineService
+
+    with patch("cog_rag_cognee.service.cognee") as mock_cognee, \
+         patch("cog_rag_cognee.service._get_docling_loader") as mock_loader:
+        mock_loader.return_value.load_bytes.return_value.markdown = "text"
+        mock_cognee.add = AsyncMock(side_effect=RuntimeError("conn lost"))
+        svc = PipelineService()
+        with pytest.raises(IngestionError, match="Failed to add bytes"):
+            await svc.add_bytes(b"data", "note.txt")
+
+
+@pytest.mark.asyncio
+async def test_cognify_with_dataset_name():
+    """cognify passes dataset_name as datasets kwarg (line 116)."""
+    with patch("cog_rag_cognee.service.cognee") as mock:
+        mock.cognify = AsyncMock(return_value={"papers": MagicMock(status="completed")})
+        from cog_rag_cognee.service import PipelineService
+
+        svc = PipelineService()
+        result = await svc.cognify(dataset_name="papers")
+
+    mock.cognify.assert_called_once()
+    call_kwargs = mock.cognify.call_args[1]
+    assert call_kwargs["datasets"] == ["papers"]
+    assert "papers" in result
