@@ -33,3 +33,9 @@ def test_docling_use_gpu_default():
     """docling_use_gpu defaults to False."""
     s = Settings()
     assert s.docling_use_gpu is False
+
+
+def test_cognee_timeout_default():
+    """cognee_timeout defaults to 300 seconds."""
+    s = Settings()
+    assert s.cognee_timeout == 300

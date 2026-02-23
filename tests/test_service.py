@@ -419,6 +419,22 @@ async def test_retry_does_not_retry_value_error():
     assert func.call_count == 1
 
 
+# --- Timeout tests ---
+
+
+@pytest.mark.asyncio
+async def test_retry_transient_respects_timeout():
+    """retry_transient raises TimeoutError when operation exceeds timeout."""
+    import asyncio
+
+    async def slow_func():
+        await asyncio.sleep(10)
+        return "never"
+
+    with pytest.raises((TimeoutError, asyncio.TimeoutError)):
+        await retry_transient(slow_func, max_retries=0, base_delay=0, timeout=0.05)
+
+
 # --- Coverage gap tests: service.py lines 87-88, 106-107, 116 ---
 
 

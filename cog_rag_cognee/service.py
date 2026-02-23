@@ -26,17 +26,25 @@ async def retry_transient(
     *args: Any,
     max_retries: int = 2,
     base_delay: float = 1.0,
+    timeout: float | None = None,
     **kwargs: Any,
 ) -> T:
     """Call *func* with exponential backoff on transient errors.
 
     Only retries ConnectionError, TimeoutError, OSError.
     Non-transient errors (ValueError, etc.) are raised immediately.
+
+    Args:
+        timeout: Overall timeout in seconds (None = no limit).
     """
     last_exc: Exception | None = None
     for attempt in range(max_retries + 1):
         try:
-            return await func(*args, **kwargs)
+            if timeout is not None:
+                async with asyncio.timeout(timeout):
+                    return await func(*args, **kwargs)
+            else:
+                return await func(*args, **kwargs)
         except _TRANSIENT_ERRORS as exc:
             last_exc = exc
             if attempt < max_retries:
@@ -70,7 +78,8 @@ class PipelineService:
     async def add_text(self, text: str, dataset_name: str = "main") -> dict[str, Any]:
         """Add text data to Cognee."""
         try:
-            await retry_transient(cognee.add, text, dataset_name=dataset_name)
+            t = get_settings().cognee_timeout
+            await retry_transient(cognee.add, text, dataset_name=dataset_name, timeout=t)
         except Exception as exc:
             raise IngestionError(f"Failed to add text: {exc}") from exc
         logger.info("Added text (%d chars) to dataset '%s'", len(text), dataset_name)
@@ -114,7 +123,8 @@ class PipelineService:
             kwargs: dict[str, Any] = {}
             if dataset_name:
                 kwargs["datasets"] = [dataset_name]
-            result = await retry_transient(cognee.cognify, **kwargs)
+            t = get_settings().cognee_timeout
+            result = await retry_transient(cognee.cognify, timeout=t, **kwargs)
         except IngestionError:
             raise
         except Exception as exc:
@@ -131,8 +141,9 @@ class PipelineService:
         """Search Cognee knowledge graph."""
         try:
             st = SearchType(search_type) if isinstance(search_type, str) else search_type
+            t = get_settings().cognee_timeout
             raw_results = await retry_transient(
-                cognee.search, query, query_type=st, top_k=limit
+                cognee.search, query, query_type=st, top_k=limit, timeout=t
             )
         except SearchError:
             raise

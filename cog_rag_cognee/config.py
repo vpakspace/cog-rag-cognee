@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     # Storage
     storage_root_dir: str = "./cognee_data"
 
+    # Cognee SDK
+    cognee_timeout: int = 300  # seconds for cognee operations
+
     # Docling
     docling_use_gpu: bool = False
 
