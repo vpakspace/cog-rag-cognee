@@ -5,6 +5,8 @@ import pytest
 
 from cog_rag_cognee.service import retry_transient
 
+_LOADER_PATH = "cog_rag_cognee.service._get_docling_loader"
+
 
 @pytest.fixture
 def svc(mock_cognee):
@@ -128,9 +130,13 @@ async def test_add_file_reraises_ingestion_error():
     from cog_rag_cognee.exceptions import IngestionError
     from cog_rag_cognee.service import PipelineService
 
-    with patch("cog_rag_cognee.service.cognee"), \
-         patch("cog_rag_cognee.service._get_docling_loader") as mock_loader:
-        mock_loader.return_value.load.side_effect = IngestionError("bad format")
+    inner_loader = MagicMock()
+    inner_loader.load.side_effect = IngestionError("bad format")
+    loader_mock = AsyncMock(return_value=inner_loader)
+    with (
+        patch("cog_rag_cognee.service.cognee"),
+        patch(_LOADER_PATH, new=loader_mock),
+    ):
         svc = PipelineService()
         with pytest.raises(IngestionError, match="bad format"):
             await svc.add_file("/tmp/bad.pdf")
@@ -142,9 +148,13 @@ async def test_add_bytes_reraises_ingestion_error():
     from cog_rag_cognee.exceptions import IngestionError
     from cog_rag_cognee.service import PipelineService
 
-    with patch("cog_rag_cognee.service.cognee"), \
-         patch("cog_rag_cognee.service._get_docling_loader") as mock_loader:
-        mock_loader.return_value.load_bytes.side_effect = IngestionError("corrupt")
+    inner_loader = MagicMock()
+    inner_loader.load_bytes.side_effect = IngestionError("corrupt")
+    loader_mock = AsyncMock(return_value=inner_loader)
+    with (
+        patch("cog_rag_cognee.service.cognee"),
+        patch(_LOADER_PATH, new=loader_mock),
+    ):
         svc = PipelineService()
         with pytest.raises(IngestionError, match="corrupt"):
             await svc.add_bytes(b"data", "bad.pdf")
@@ -195,11 +205,10 @@ async def test_add_file_uses_docling(mock_cognee, tmp_path):
 @pytest.mark.asyncio
 async def test_docling_loader_reused_across_calls(mock_cognee):
     """DoclingLoader is created once and reused, not per-call."""
-    with patch("cog_rag_cognee.service._get_docling_loader") as mock_get_loader:
-        mock_loader = MagicMock()
-        mock_loader.load_bytes.return_value = MagicMock(markdown="content")
-        mock_get_loader.return_value = mock_loader
-
+    mock_loader = MagicMock()
+    mock_loader.load_bytes.return_value = MagicMock(markdown="content")
+    mock_get_loader = AsyncMock(return_value=mock_loader)
+    with patch(_LOADER_PATH, new=mock_get_loader):
         from cog_rag_cognee.service import PipelineService
 
         svc = PipelineService()
@@ -464,9 +473,13 @@ async def test_add_file_wraps_generic_exception():
     from cog_rag_cognee.exceptions import IngestionError
     from cog_rag_cognee.service import PipelineService
 
-    with patch("cog_rag_cognee.service.cognee") as mock_cognee, \
-         patch("cog_rag_cognee.service._get_docling_loader") as mock_loader:
-        mock_loader.return_value.load.return_value.markdown = "text"
+    inner_loader = MagicMock()
+    inner_loader.load.return_value.markdown = "text"
+    loader_mock = AsyncMock(return_value=inner_loader)
+    with (
+        patch("cog_rag_cognee.service.cognee") as mock_cognee,
+        patch(_LOADER_PATH, new=loader_mock),
+    ):
         mock_cognee.add = AsyncMock(side_effect=RuntimeError("conn lost"))
         svc = PipelineService()
         with pytest.raises(IngestionError, match="Failed to add file"):
@@ -479,9 +492,13 @@ async def test_add_bytes_wraps_generic_exception():
     from cog_rag_cognee.exceptions import IngestionError
     from cog_rag_cognee.service import PipelineService
 
-    with patch("cog_rag_cognee.service.cognee") as mock_cognee, \
-         patch("cog_rag_cognee.service._get_docling_loader") as mock_loader:
-        mock_loader.return_value.load_bytes.return_value.markdown = "text"
+    inner_loader = MagicMock()
+    inner_loader.load_bytes.return_value.markdown = "text"
+    loader_mock = AsyncMock(return_value=inner_loader)
+    with (
+        patch("cog_rag_cognee.service.cognee") as mock_cognee,
+        patch(_LOADER_PATH, new=loader_mock),
+    ):
         mock_cognee.add = AsyncMock(side_effect=RuntimeError("conn lost"))
         svc = PipelineService()
         with pytest.raises(IngestionError, match="Failed to add bytes"):
@@ -519,11 +536,13 @@ async def test_search_invalid_search_type_raises_search_error():
 @pytest.mark.asyncio
 async def test_add_file_propagates_dataset_name():
     """add_file forwards dataset_name to cognee.add."""
+    inner_loader = MagicMock()
+    inner_loader.load.return_value.markdown = "content"
+    loader_mock = AsyncMock(return_value=inner_loader)
     with (
         patch("cog_rag_cognee.service.cognee") as mock_cognee,
-        patch("cog_rag_cognee.service._get_docling_loader") as mock_loader,
+        patch(_LOADER_PATH, new=loader_mock),
     ):
-        mock_loader.return_value.load.return_value.markdown = "content"
         mock_cognee.add = AsyncMock()
         from cog_rag_cognee.service import PipelineService
 
@@ -544,3 +563,28 @@ def test_cleanup_docling_loader():
 
     cleanup_docling_loader()
     assert svc_mod._docling_loader is None
+
+
+@pytest.mark.asyncio
+async def test_docling_loader_singleton_thread_safe():
+    """Concurrent _get_docling_loader calls produce a single instance."""
+    import asyncio
+
+    import cog_rag_cognee.service as svc_mod
+    from cog_rag_cognee.service import _get_docling_loader
+
+    # Reset the module-level singleton so we start from a clean slate.
+    original = svc_mod._docling_loader
+    svc_mod._docling_loader = None
+    try:
+        fake_loader = MagicMock()
+        with patch("cog_rag_cognee.service.DoclingLoader", return_value=fake_loader):
+            # Launch several coroutines concurrently; only one should construct
+            # DoclingLoader even though they all reach the None-check simultaneously.
+            results = await asyncio.gather(*[_get_docling_loader() for _ in range(5)])
+
+        # Every call returns the same singleton object.
+        assert all(r is fake_loader for r in results)
+    finally:
+        # Restore whatever was there before (None in practice during tests).
+        svc_mod._docling_loader = original

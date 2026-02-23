@@ -174,9 +174,11 @@ def create_app() -> FastAPI:
         try:
             try:
                 response = await call_next(request)
-            except RequestValidationError as exc:
-                # BaseHTTPMiddleware may propagate validation errors before
-                # ExceptionMiddleware catches them — handle here as fallback.
+            except RequestValidationError as exc:  # pragma: no cover
+                # Defensive fallback: FastAPI's ExceptionMiddleware normally
+                # catches RequestValidationError before it propagates here, so
+                # this branch is unreachable in production and cannot be
+                # triggered via TestClient without patching Starlette internals.
                 response = await validation_error_handler(request, exc)
             duration_ms = round((time.monotonic() - start) * 1000, 1)
             if duration_ms > 5000:

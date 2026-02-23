@@ -129,15 +129,21 @@ def test_readiness_503_when_neo4j_down(client, mock_graph_client):
     assert data["checks"]["neo4j"] is False
 
 
-def test_readiness_503_when_neo4j_raises(client, mock_graph_client, monkeypatch):
-    """Readiness returns 503 with neo4j=false when health_check raises Exception."""
+def test_readiness_503_when_neo4j_raises(client, mock_graph_client, monkeypatch, caplog):
+    """Readiness returns 503 with neo4j=false when health_check raises Exception.
+
+    Also verifies that a WARNING is emitted so operators can observe failures.
+    """
     mock_graph_client.health_check = AsyncMock(side_effect=Exception("connection refused"))
     monkeypatch.setattr("api.routes.check_ollama", AsyncMock(return_value=True))
-    resp = client.get("/api/v1/readiness")
+    with caplog.at_level(logging.WARNING, logger="api.routes"):
+        resp = client.get("/api/v1/readiness")
     assert resp.status_code == 503
     data = resp.json()
     assert data["status"] == "not_ready"
     assert data["checks"]["neo4j"] is False
+    warning_msgs = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert any("Readiness" in m and "neo4j" in m for m in warning_msgs)
 
 
 def test_query(client):
@@ -997,10 +1003,10 @@ def test_neo4j_timeout_above_max_rejected():
 
 
 def test_cognee_timeout_lower_bound():
-    """cognee_timeout=10 is the minimum valid value."""
+    """cognee_timeout=10 is the minimum valid value (with neo4j_timeout=10)."""
     from cog_rag_cognee.config import Settings
 
-    s = Settings(cognee_timeout=10)
+    s = Settings(cognee_timeout=10, neo4j_timeout=10)
     assert s.cognee_timeout == 10
 
 
@@ -1022,6 +1028,24 @@ def test_max_upload_bytes_zero_rejected():
 
     with pytest.raises(ValidationError, match="max_upload_bytes"):
         Settings(max_upload_bytes=0)
+
+
+def test_config_cognee_timeout_less_than_neo4j_timeout_rejected():
+    """cognee_timeout < neo4j_timeout is rejected."""
+    from pydantic import ValidationError
+
+    from cog_rag_cognee.config import Settings
+
+    with pytest.raises(ValidationError, match="cognee_timeout"):
+        Settings(cognee_timeout=10, neo4j_timeout=30)
+
+
+def test_config_cognee_timeout_equal_neo4j_timeout_accepted():
+    """cognee_timeout == neo4j_timeout is valid."""
+    from cog_rag_cognee.config import Settings
+
+    s = Settings(cognee_timeout=30, neo4j_timeout=30)
+    assert s.cognee_timeout == 30
 
 
 def test_fast_request_no_slow_warning(client, caplog):
@@ -1062,3 +1086,79 @@ def test_reset_logs_client_ip(monkeypatch, mock_service, mock_graph_client, capl
     assert len(reset_logs) >= 1
     msg = reset_logs[0].getMessage()
     assert "testclient" in msg.lower() or "127" in msg or "unknown" in msg
+
+
+@pytest.mark.asyncio
+async def test_validation_error_handler_returns_structured_response():
+    """validation_error_handler returns ERR_VALIDATION with a detail list.
+
+    This test exercises the handler function directly because the except clause
+    inside add_request_id (app.py lines 177-180) is a defensive fallback that
+    cannot be reached through TestClient: FastAPI's ExceptionMiddleware always
+    intercepts RequestValidationError before it propagates back through
+    BaseHTTPMiddleware.  The except clause is marked `# pragma: no cover`.
+    """
+    import json
+    from unittest.mock import MagicMock
+
+    from fastapi import Request
+    from fastapi.exceptions import RequestValidationError
+
+    from api.app import validation_error_handler
+
+    mock_request = MagicMock(spec=Request)
+    exc = RequestValidationError(
+        errors=[
+            {
+                "type": "missing",
+                "loc": ("body", "text"),
+                "msg": "Field required",
+                "input": {},
+            }
+        ]
+    )
+
+    response = await validation_error_handler(mock_request, exc)
+
+    assert response.status_code == 422
+    body = json.loads(response.body)
+    assert body["code"] == "ERR_VALIDATION"
+    assert body["error"] == "ValidationError"
+    assert isinstance(body["detail"], list)
+    assert body["detail"][0]["msg"] == "Field required"
+
+
+@pytest.mark.asyncio
+async def test_validation_error_handler_multiple_errors():
+    """validation_error_handler includes every validation error in detail list."""
+    import json
+    from unittest.mock import MagicMock
+
+    from fastapi import Request
+    from fastapi.exceptions import RequestValidationError
+
+    from api.app import validation_error_handler
+
+    mock_request = MagicMock(spec=Request)
+    exc = RequestValidationError(
+        errors=[
+            {
+                "type": "missing",
+                "loc": ("body", "text"),
+                "msg": "Field required",
+                "input": {},
+            },
+            {
+                "type": "int_parsing",
+                "loc": ("body", "limit"),
+                "msg": "Not a valid integer",
+                "input": "abc",
+            },
+        ]
+    )
+
+    response = await validation_error_handler(mock_request, exc)
+
+    assert response.status_code == 422
+    body = json.loads(response.body)
+    assert len(body["detail"]) == 2

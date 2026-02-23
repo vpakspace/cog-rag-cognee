@@ -83,6 +83,15 @@ class Settings(BaseSettings):
             raise ValueError(f"api_port and ui_port must differ (both are {self.api_port})")
         return self
 
+    @model_validator(mode="after")
+    def validate_timeouts(self) -> "Settings":
+        if self.cognee_timeout < self.neo4j_timeout:
+            raise ValueError(
+                f"cognee_timeout ({self.cognee_timeout}) must be "
+                f">= neo4j_timeout ({self.neo4j_timeout})"
+            )
+        return self
+
     @property
     def ollama_base_url(self) -> str:
         """Return the base URL for Ollama API."""

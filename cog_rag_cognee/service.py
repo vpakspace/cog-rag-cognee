@@ -61,14 +61,22 @@ async def retry_transient(
 
 
 _docling_loader: DoclingLoader | None = None
+_docling_lock = asyncio.Lock()
 
 
-def _get_docling_loader() -> DoclingLoader:
-    """Return a cached DoclingLoader singleton (GPU models are ~2 GB)."""
+async def _get_docling_loader() -> DoclingLoader:
+    """Return a cached DoclingLoader singleton (GPU models are ~2 GB).
+
+    Uses an asyncio.Lock to prevent duplicate initialisation under concurrent
+    coroutines (double-checked locking pattern).
+    """
     global _docling_loader
-    if _docling_loader is None:
-        settings = get_settings()
-        _docling_loader = DoclingLoader(use_gpu=settings.docling_use_gpu)
+    if _docling_loader is not None:
+        return _docling_loader
+    async with _docling_lock:
+        if _docling_loader is None:
+            settings = get_settings()
+            _docling_loader = DoclingLoader(use_gpu=settings.docling_use_gpu)
     return _docling_loader
 
 
@@ -96,7 +104,7 @@ class PipelineService:
     async def add_file(self, file_path: str, dataset_name: str = "main") -> dict[str, Any]:
         """Add file content to Cognee via DoclingLoader."""
         try:
-            loader = _get_docling_loader()
+            loader = await _get_docling_loader()
             result = loader.load(file_path)
             await cognee.add(result.markdown, dataset_name=dataset_name)
         except IngestionError:
@@ -115,7 +123,7 @@ class PipelineService:
     ) -> dict[str, Any]:
         """Add uploaded file bytes to Cognee via DoclingLoader."""
         try:
-            loader = _get_docling_loader()
+            loader = await _get_docling_loader()
             result = loader.load_bytes(data, filename)
             await cognee.add(result.markdown, dataset_name=dataset_name)
         except IngestionError:

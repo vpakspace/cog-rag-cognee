@@ -97,6 +97,7 @@ async def readiness(gc: GraphClient = Depends(get_graph_client)):
     try:
         neo4j_ok = await gc.health_check()
     except Exception:
+        logger.warning("Readiness: neo4j health_check failed", exc_info=True)
         neo4j_ok = False
 
     settings = get_settings()
