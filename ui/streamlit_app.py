@@ -32,6 +32,20 @@ def _api_headers() -> dict[str, str]:
     return headers
 
 
+# --- Sidebar health status ---
+try:
+    _health_resp = httpx.get(f"{API_BASE}/health", headers=_api_headers(), timeout=3)
+    if _health_resp.status_code == 200:
+        _health = _health_resp.json()
+        _neo4j_icon = "🟢" if _health.get("neo4j") else "🔴"
+        _ollama_icon = "🟢" if _health.get("ollama") else "🔴"
+        st.sidebar.markdown(f"{_neo4j_icon} Neo4j  {_ollama_icon} Ollama")
+    else:
+        st.sidebar.markdown(f"⚠️ {t('health_fail')}")
+except Exception:
+    st.sidebar.markdown(f"⚠️ {t('health_fail')}")
+
+
 # --- Tabs ---
 tab_upload, tab_search, tab_graph, tab_settings = st.tabs(
     [t("tab_upload"), t("tab_search"), t("tab_graph"), t("tab_settings")]
