@@ -72,6 +72,14 @@ def _get_docling_loader() -> DoclingLoader:
     return _docling_loader
 
 
+def cleanup_docling_loader() -> None:
+    """Release the cached DoclingLoader to free GPU memory."""
+    global _docling_loader
+    if _docling_loader is not None:
+        logger.info("Releasing DoclingLoader (freeing GPU memory)")
+        _docling_loader = None
+
+
 class PipelineService:
     """Orchestrates Cognee SDK operations."""
 

@@ -55,6 +55,8 @@ async def lifespan(app: FastAPI):
         logger.info("GraphClient closed")
     except Exception:
         pass
+    from cog_rag_cognee.service import cleanup_docling_loader
+    cleanup_docling_loader()
     logger.info("cog-rag-cognee API shutting down")
 
 

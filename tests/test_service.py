@@ -531,3 +531,16 @@ async def test_add_file_propagates_dataset_name():
         await svc.add_file("/tmp/notes.txt", dataset_name="research")
 
     mock_cognee.add.assert_called_once_with("content", dataset_name="research")
+
+
+def test_cleanup_docling_loader():
+    """cleanup_docling_loader should release the cached loader."""
+    import cog_rag_cognee.service as svc_mod
+    from cog_rag_cognee.service import cleanup_docling_loader
+
+    # Force init by setting a mock
+    svc_mod._docling_loader = MagicMock()
+    assert svc_mod._docling_loader is not None
+
+    cleanup_docling_loader()
+    assert svc_mod._docling_loader is None
