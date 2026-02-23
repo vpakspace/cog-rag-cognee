@@ -62,5 +62,7 @@ class HealthStatus(BaseModel):
     """Service health status."""
 
     status: str = "ok"
+    version: str = "0.1.0"
+    uptime_seconds: float = 0.0
     ollama: bool = False
     neo4j: bool = False

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -23,6 +24,8 @@ from cog_rag_cognee.models import (
 from cog_rag_cognee.service import PipelineService
 
 logger = logging.getLogger(__name__)
+
+_start_time = time.monotonic()
 
 SearchMode = Literal["CHUNKS", "GRAPH_COMPLETION", "RAG_COMPLETION", "SUMMARIES"]
 
@@ -69,7 +72,12 @@ async def health(gc: GraphClient = Depends(get_graph_client)):
     ollama_ok = await check_ollama(settings.llm_endpoint)
 
     status = "ok" if (neo4j_ok and ollama_ok) else "degraded"
-    return HealthStatus(status=status, neo4j=neo4j_ok, ollama=ollama_ok)
+    return HealthStatus(
+        status=status,
+        uptime_seconds=round(time.monotonic() - _start_time, 2),
+        neo4j=neo4j_ok,
+        ollama=ollama_ok,
+    )
 
 
 @router.post("/query", response_model=QAResult)
