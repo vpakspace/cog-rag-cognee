@@ -14,6 +14,7 @@ from cog_rag_cognee.graph_client import GraphClient
 from cog_rag_cognee.models import (
     GraphEntitiesResponse,
     GraphStats,
+    HealthStatus,
     IngestResponse,
     QAResult,
     SearchResult,
@@ -54,10 +55,35 @@ class IngestRequest(BaseModel):
         return v
 
 
-@router.get("/health")
-async def health():
-    """Health check endpoint."""
-    return {"status": "ok"}
+@router.get("/health", response_model=HealthStatus)
+async def health(gc: GraphClient = Depends(get_graph_client)):
+    """Health check — verifies Neo4j and Ollama connectivity."""
+    try:
+        neo4j_ok = await gc.health_check()
+    except Exception:
+        neo4j_ok = False
+
+    ollama_ok = await _check_ollama()
+
+    status = "ok" if neo4j_ok else "degraded"
+    return HealthStatus(status=status, neo4j=neo4j_ok, ollama=ollama_ok)
+
+
+async def _check_ollama() -> bool:
+    """Check Ollama is reachable via /api/tags."""
+    import httpx
+
+    settings = get_settings()
+    # Extract base URL from llm_endpoint (strip /v1 suffix if present)
+    base = settings.llm_endpoint.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+    try:
+        async with httpx.AsyncClient(timeout=3) as client:
+            resp = await client.get(f"{base}/api/tags")
+            return resp.status_code == 200
+    except Exception:
+        return False
 
 
 @router.post("/query", response_model=QAResult)

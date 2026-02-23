@@ -43,6 +43,7 @@ def mock_graph_client():
     gc.get_relationships = AsyncMock(return_value=[
         {"source": "Alice", "target": "Acme Corp", "type": "WORKS_AT"},
     ])
+    gc.health_check = AsyncMock(return_value=True)
     gc.close = AsyncMock()
     return gc
 
@@ -66,11 +67,34 @@ def client(mock_service, mock_graph_client):
     set_graph_client(None)
 
 
-def test_health(client):
-    """Health endpoint returns ok."""
+def test_health(client, mock_graph_client):
+    """Health endpoint checks Neo4j and Ollama connectivity."""
+    mock_graph_client.health_check = AsyncMock(return_value=True)
     resp = client.get("/api/v1/health")
     assert resp.status_code == 200
-    assert resp.json()["status"] == "ok"
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert data["neo4j"] is True
+
+
+def test_health_neo4j_down(client, mock_graph_client):
+    """Health returns degraded when Neo4j is unreachable."""
+    mock_graph_client.health_check = AsyncMock(return_value=False)
+    resp = client.get("/api/v1/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "degraded"
+    assert data["neo4j"] is False
+
+
+def test_health_neo4j_exception(client, mock_graph_client):
+    """Health returns degraded when Neo4j health check throws."""
+    mock_graph_client.health_check = AsyncMock(side_effect=Exception("refused"))
+    resp = client.get("/api/v1/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "degraded"
+    assert data["neo4j"] is False
 
 
 def test_query(client):
