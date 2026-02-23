@@ -57,6 +57,29 @@ async def test_verify_api_key_uses_constant_time_comparison():
         assert result == "secret"
 
 
+@pytest.mark.asyncio
+async def test_verify_api_key_logs_rejection():
+    """Rejected API key attempt is logged at WARNING level."""
+    with patch("api.deps.get_settings") as mock_settings, \
+         patch("api.deps.logger") as mock_logger:
+        mock_settings.return_value.api_key = "secret-key-12345"
+        with pytest.raises(HTTPException):
+            await verify_api_key(api_key="wrong-key")
+        mock_logger.warning.assert_called_once()
+        assert "rejected" in mock_logger.warning.call_args[0][0].lower()
+
+
+@pytest.mark.asyncio
+async def test_verify_api_key_logs_missing_key():
+    """Missing API key attempt is logged at WARNING level."""
+    with patch("api.deps.get_settings") as mock_settings, \
+         patch("api.deps.logger") as mock_logger:
+        mock_settings.return_value.api_key = "secret-key-12345"
+        with pytest.raises(HTTPException):
+            await verify_api_key(api_key=None)
+        mock_logger.warning.assert_called_once()
+
+
 def test_get_service_lazy_init():
     """get_service() creates PipelineService when global is None."""
     import api.deps as deps_mod

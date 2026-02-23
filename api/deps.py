@@ -27,6 +27,7 @@ async def verify_api_key(
     if not settings.api_key:
         return None  # Auth disabled
     if not api_key or not hmac.compare_digest(api_key, settings.api_key):
+        logger.warning("API key rejected (key %s)", "missing" if not api_key else "invalid")
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
     return api_key
 
