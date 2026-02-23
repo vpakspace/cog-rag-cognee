@@ -3,6 +3,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from cog_rag_cognee.service import retry_transient
+
 
 @pytest.fixture
 def mock_cognee():
@@ -199,3 +201,42 @@ async def test_reset_raises_ingestion_error():
         svc = PipelineService()
         with pytest.raises(IngestionError, match="Data reset failed"):
             await svc.reset()
+
+
+# --- Retry logic tests ---
+
+
+@pytest.mark.asyncio
+async def test_retry_succeeds_on_first_try():
+    """retry_transient returns result immediately on success."""
+    func = AsyncMock(return_value="ok")
+    result = await retry_transient(func, max_retries=3, base_delay=0)
+    assert result == "ok"
+    assert func.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_recovers_after_transient_failure():
+    """retry_transient recovers after ConnectionError."""
+    func = AsyncMock(side_effect=[ConnectionError("refused"), "ok"])
+    result = await retry_transient(func, max_retries=3, base_delay=0)
+    assert result == "ok"
+    assert func.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_retry_exhausted_raises():
+    """retry_transient raises after max_retries exceeded."""
+    func = AsyncMock(side_effect=ConnectionError("down"))
+    with pytest.raises(ConnectionError):
+        await retry_transient(func, max_retries=2, base_delay=0)
+    assert func.call_count == 3  # 1 initial + 2 retries
+
+
+@pytest.mark.asyncio
+async def test_retry_does_not_retry_value_error():
+    """retry_transient does not retry ValueError (non-transient)."""
+    func = AsyncMock(side_effect=ValueError("bad input"))
+    with pytest.raises(ValueError, match="bad input"):
+        await retry_transient(func, max_retries=3, base_delay=0)
+    assert func.call_count == 1

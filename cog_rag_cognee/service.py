@@ -1,9 +1,13 @@
 """PipelineService — thin wrapper over Cognee SDK."""
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
+
+T = TypeVar("T")
 
 import cognee
 from cognee.modules.search.types.SearchType import SearchType
@@ -14,6 +18,40 @@ from cog_rag_cognee.exceptions import IngestionError, SearchError
 from cog_rag_cognee.models import QAResult, SearchResult
 
 logger = logging.getLogger(__name__)
+
+_TRANSIENT_ERRORS = (ConnectionError, TimeoutError, OSError)
+
+
+async def retry_transient(
+    func: Callable[..., Awaitable[T]],
+    *args: Any,
+    max_retries: int = 2,
+    base_delay: float = 1.0,
+    **kwargs: Any,
+) -> T:
+    """Call *func* with exponential backoff on transient errors.
+
+    Only retries ConnectionError, TimeoutError, OSError.
+    Non-transient errors (ValueError, etc.) are raised immediately.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            return await func(*args, **kwargs)
+        except _TRANSIENT_ERRORS as exc:
+            last_exc = exc
+            if attempt < max_retries:
+                delay = base_delay * (2**attempt)
+                logger.warning(
+                    "Transient error (attempt %d/%d): %s — retrying in %.1fs",
+                    attempt + 1,
+                    max_retries + 1,
+                    exc,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+    raise last_exc  # type: ignore[misc]
+
 
 _docling_loader: DoclingLoader | None = None
 
@@ -33,7 +71,7 @@ class PipelineService:
     async def add_text(self, text: str, dataset_name: str = "main") -> dict[str, Any]:
         """Add text data to Cognee."""
         try:
-            await cognee.add(text, dataset_name=dataset_name)
+            await retry_transient(cognee.add, text, dataset_name=dataset_name)
         except Exception as exc:
             raise IngestionError(f"Failed to add text: {exc}") from exc
         logger.info("Added text (%d chars) to dataset '%s'", len(text), dataset_name)
@@ -77,7 +115,7 @@ class PipelineService:
             kwargs: dict[str, Any] = {}
             if dataset_name:
                 kwargs["datasets"] = [dataset_name]
-            result = await cognee.cognify(**kwargs)
+            result = await retry_transient(cognee.cognify, **kwargs)
         except IngestionError:
             raise
         except Exception as exc:
@@ -94,7 +132,9 @@ class PipelineService:
         """Search Cognee knowledge graph."""
         try:
             st = SearchType(search_type) if isinstance(search_type, str) else search_type
-            raw_results = await cognee.search(query, query_type=st, top_k=limit)
+            raw_results = await retry_transient(
+                cognee.search, query, query_type=st, top_k=limit
+            )
         except SearchError:
             raise
         except Exception as exc:
