@@ -67,7 +67,7 @@ async def health(gc: GraphClient = Depends(get_graph_client)):
     settings = get_settings()
     ollama_ok = await check_ollama(settings.llm_endpoint)
 
-    status = "ok" if neo4j_ok else "degraded"
+    status = "ok" if (neo4j_ok and ollama_ok) else "degraded"
     return HealthStatus(status=status, neo4j=neo4j_ok, ollama=ollama_ok)
 
 
