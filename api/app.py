@@ -49,9 +49,16 @@ async def cograg_error_handler(request: Request, exc: CogRagError) -> JSONRespon
     else:
         status_code = 500
     logger.warning("CogRagError: %s", exc, exc_info=True)
+
+    settings = get_settings()
+    if settings.debug:
+        detail = str(exc)
+    else:
+        detail = "An internal error occurred. Check server logs for details."
+
     return JSONResponse(
         status_code=status_code,
-        content={"error": type(exc).__name__, "detail": str(exc)},
+        content={"error": type(exc).__name__, "detail": detail},
     )
 
 

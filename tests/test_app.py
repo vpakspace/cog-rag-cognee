@@ -273,7 +273,7 @@ def test_reset_rejects_false_confirmation(client):
 
 
 def test_exception_handler_ingestion_error(client, mock_service):
-    """IngestionError returns 502 with error details."""
+    """IngestionError returns 502 with generic message (DEBUG=false)."""
     from cog_rag_cognee.exceptions import IngestionError
 
     mock_service.add_text = AsyncMock(side_effect=IngestionError("Cognee down"))
@@ -281,11 +281,13 @@ def test_exception_handler_ingestion_error(client, mock_service):
     assert resp.status_code == 502
     data = resp.json()
     assert data["error"] == "IngestionError"
-    assert "Cognee down" in data["detail"]
+    # Internal details must NOT leak in production mode
+    assert "Cognee down" not in data["detail"]
+    assert "internal error" in data["detail"].lower()
 
 
 def test_exception_handler_search_error(client, mock_service):
-    """SearchError returns 502 with error details."""
+    """SearchError returns 502 with generic message (DEBUG=false)."""
     from cog_rag_cognee.exceptions import SearchError
 
     mock_service.query = AsyncMock(side_effect=SearchError("Search failed"))
@@ -293,3 +295,41 @@ def test_exception_handler_search_error(client, mock_service):
     assert resp.status_code == 502
     data = resp.json()
     assert data["error"] == "SearchError"
+    assert "internal error" in data["detail"].lower()
+
+
+def test_exception_handler_shows_details_in_debug(mock_service, mock_graph_client):
+    """Error handler shows full details when DEBUG=true."""
+    import os
+    from unittest.mock import AsyncMock
+
+    from api.deps import set_graph_client, set_service
+    from cog_rag_cognee.exceptions import IngestionError
+
+    mock_service.add_text = AsyncMock(
+        side_effect=IngestionError("neo4j://localhost:7687 connection refused")
+    )
+    set_service(mock_service)
+    set_graph_client(mock_graph_client)
+
+    old_debug = os.environ.get("DEBUG")
+    os.environ["DEBUG"] = "true"
+    try:
+        # Must recreate app to pick up new settings
+        from cog_rag_cognee.config import get_settings
+        get_settings.cache_clear()
+
+        from api.app import create_app
+        app = create_app()
+        with TestClient(app) as c:
+            resp = c.post("/api/v1/ingest", json={"text": "hello"})
+        assert resp.status_code == 502
+        assert "neo4j://" in resp.json()["detail"]
+    finally:
+        if old_debug is None:
+            os.environ.pop("DEBUG", None)
+        else:
+            os.environ["DEBUG"] = old_debug
+        get_settings.cache_clear()
+        set_service(None)
+        set_graph_client(None)
