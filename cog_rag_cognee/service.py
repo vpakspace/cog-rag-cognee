@@ -15,6 +15,17 @@ from cog_rag_cognee.models import QAResult, SearchResult
 
 logger = logging.getLogger(__name__)
 
+_docling_loader: DoclingLoader | None = None
+
+
+def _get_docling_loader() -> DoclingLoader:
+    """Return a cached DoclingLoader singleton (GPU models are ~2 GB)."""
+    global _docling_loader
+    if _docling_loader is None:
+        settings = get_settings()
+        _docling_loader = DoclingLoader(use_gpu=settings.docling_use_gpu)
+    return _docling_loader
+
 
 class PipelineService:
     """Orchestrates Cognee SDK operations."""
@@ -31,8 +42,7 @@ class PipelineService:
     async def add_file(self, file_path: str, dataset_name: str = "main") -> dict[str, Any]:
         """Add file content to Cognee via DoclingLoader."""
         try:
-            settings = get_settings()
-            loader = DoclingLoader(use_gpu=settings.docling_use_gpu)
+            loader = _get_docling_loader()
             result = loader.load(file_path)
             await cognee.add(result.markdown, dataset_name=dataset_name)
         except IngestionError:
@@ -51,8 +61,7 @@ class PipelineService:
     ) -> dict[str, Any]:
         """Add uploaded file bytes to Cognee via DoclingLoader."""
         try:
-            settings = get_settings()
-            loader = DoclingLoader(use_gpu=settings.docling_use_gpu)
+            loader = _get_docling_loader()
             result = loader.load_bytes(data, filename)
             await cognee.add(result.markdown, dataset_name=dataset_name)
         except IngestionError:

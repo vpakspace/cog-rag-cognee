@@ -86,6 +86,24 @@ async def test_add_file_uses_docling(mock_cognee, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_docling_loader_reused_across_calls(mock_cognee):
+    """DoclingLoader is created once and reused, not per-call."""
+    with patch("cog_rag_cognee.service._get_docling_loader") as mock_get_loader:
+        mock_loader = MagicMock()
+        mock_loader.load_bytes.return_value = MagicMock(markdown="content")
+        mock_get_loader.return_value = mock_loader
+
+        from cog_rag_cognee.service import PipelineService
+
+        svc = PipelineService()
+        await svc.add_bytes(b"data1", "a.txt")
+        await svc.add_bytes(b"data2", "b.txt")
+
+        # _get_docling_loader should be called twice but return cached instance
+        assert mock_get_loader.call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_add_bytes(mock_cognee):
     """add_bytes converts bytes via DoclingLoader then calls cognee.add."""
     from cog_rag_cognee.service import PipelineService
