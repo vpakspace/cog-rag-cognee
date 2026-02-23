@@ -24,17 +24,18 @@ _settings = get_settings()
 API_BASE = f"http://{_settings.api_host}:{_settings.api_port}/api/v1"
 
 
-def _api_headers() -> dict[str, str]:
-    """Return auth headers if API key is configured."""
+@st.cache_resource
+def _get_http_client() -> httpx.Client:
+    """Return a cached httpx.Client with base_url and optional auth header."""
     headers: dict[str, str] = {}
     if _settings.api_key:
         headers["X-API-Key"] = _settings.api_key
-    return headers
+    return httpx.Client(base_url=API_BASE, headers=headers)
 
 
 # --- Sidebar health status ---
 try:
-    _health_resp = httpx.get(f"{API_BASE}/health", headers=_api_headers(), timeout=3)
+    _health_resp = _get_http_client().get("/health", timeout=3)
     if _health_resp.status_code == 200:
         _health = _health_resp.json()
         _neo4j_icon = "🟢" if _health.get("neo4j") else "🔴"
@@ -64,10 +65,9 @@ with tab_upload:
         with st.spinner("Processing..."):
             if text_input.strip():
                 try:
-                    resp = httpx.post(
-                        f"{API_BASE}/ingest",
+                    resp = _get_http_client().post(
+                        "/ingest",
                         json={"text": text_input},
-                        headers=_api_headers(),
                         timeout=120,
                     )
                     if resp.status_code == 200:
@@ -80,10 +80,9 @@ with tab_upload:
             elif uploaded_file is not None:
                 try:
                     file_bytes = uploaded_file.read()
-                    resp = httpx.post(
-                        f"{API_BASE}/ingest-file",
+                    resp = _get_http_client().post(
+                        "/ingest-file",
                         files={"file": (uploaded_file.name, file_bytes)},
-                        headers=_api_headers(),
                         timeout=120,
                     )
                     if resp.status_code == 200:
@@ -111,10 +110,9 @@ with tab_search:
     if st.button(t("search_btn")) and query:
         with st.spinner("Searching..."):
             try:
-                resp = httpx.post(
-                    f"{API_BASE}/query",
+                resp = _get_http_client().post(
+                    "/query",
                     json={"text": query, "mode": search_mode},
-                    headers=_api_headers(),
                     timeout=60,
                 )
                 if resp.status_code == 200:
@@ -146,9 +144,7 @@ with tab_graph:
 
     # Fetch stats for sidebar filter
     try:
-        stats_resp = httpx.get(
-            f"{API_BASE}/graph/stats", headers=_api_headers(), timeout=5
-        )
+        stats_resp = _get_http_client().get("/graph/stats", timeout=5)
         stats_data = stats_resp.json() if stats_resp.status_code == 200 else {}
     except Exception:
         stats_data = {}
@@ -182,10 +178,9 @@ with tab_graph:
                 graph_params: dict[str, str] = {"limit": "200"}
                 if selected_types and selected_types != entity_types_available:
                     graph_params["entity_types"] = ",".join(selected_types)
-                resp = httpx.get(
-                    f"{API_BASE}/graph/entities",
+                resp = _get_http_client().get(
+                    "/graph/entities",
                     params=graph_params,
-                    headers=_api_headers(),
                     timeout=10,
                 )
                 if resp.status_code == 200:
@@ -217,10 +212,9 @@ with tab_settings:
     if st.button(t("settings_clear"), type="secondary"):  # noqa: SIM102
         if st.checkbox(t("settings_clear_confirm")):
             try:
-                resp = httpx.post(
-                    f"{API_BASE}/reset",
+                resp = _get_http_client().post(
+                    "/reset",
                     json={"confirm": True},
-                    headers=_api_headers(),
                     timeout=30,
                 )
                 if resp.status_code == 200:
