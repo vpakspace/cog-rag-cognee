@@ -7,6 +7,7 @@ import time
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
 from api.deps import get_graph_client, get_service, verify_api_key
@@ -19,6 +20,7 @@ from cog_rag_cognee.models import (
     HealthStatus,
     IngestResponse,
     QAResult,
+    ReadinessStatus,
     SearchResult,
 )
 from cog_rag_cognee.service import PipelineService
@@ -38,12 +40,25 @@ _DATASET_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 _ENTITY_TYPE_RE = re.compile(r"^[a-zA-Z0-9_]+$")
 
 
+def _strip_text(v: str) -> str:
+    """Strip whitespace and reject blank text."""
+    v = v.strip()
+    if not v:
+        raise ValueError("text must not be blank")
+    return v
+
+
 class QueryRequest(BaseModel):
     """Request body for /query and /search endpoints."""
 
     text: str = Field(..., min_length=1, max_length=500_000)
     mode: SearchMode = "CHUNKS"
     limit: int = Field(default=5, ge=1, le=50)
+
+    @field_validator("text")
+    @classmethod
+    def strip_text(cls, v: str) -> str:
+        return _strip_text(v)
 
 
 class IngestRequest(BaseModel):
@@ -52,12 +67,44 @@ class IngestRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=500_000)
     dataset_name: str = Field(default="main", min_length=1, max_length=64)
 
+    @field_validator("text")
+    @classmethod
+    def strip_text(cls, v: str) -> str:
+        return _strip_text(v)
+
     @field_validator("dataset_name")
     @classmethod
     def validate_dataset_name(cls, v: str) -> str:
         if not _DATASET_RE.match(v):
             raise ValueError("dataset_name must be alphanumeric, hyphens, or underscores")
         return v
+
+
+@router.get("/liveness")
+async def liveness():
+    """Liveness probe — always 200 if the process is running."""
+    return {"status": "ok"}
+
+
+@router.get("/readiness")
+async def readiness(gc: GraphClient = Depends(get_graph_client)):
+    """Readiness probe — returns 200 if dependencies are healthy, 503 otherwise."""
+    try:
+        neo4j_ok = await gc.health_check()
+    except Exception:
+        neo4j_ok = False
+
+    settings = get_settings()
+    ollama_ok = await check_ollama(settings.llm_endpoint)
+
+    checks = {"neo4j": neo4j_ok, "ollama": ollama_ok}
+    all_ready = all(checks.values())
+    status = "ready" if all_ready else "not_ready"
+    code = 200 if all_ready else 503
+    return JSONResponse(
+        status_code=code,
+        content=ReadinessStatus(status=status, checks=checks).model_dump(),
+    )
 
 
 @router.get("/health", response_model=HealthStatus)

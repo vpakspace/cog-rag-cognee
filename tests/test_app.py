@@ -98,6 +98,34 @@ def test_health_neo4j_exception(client, mock_graph_client):
     assert data["neo4j"] is False
 
 
+def test_liveness_always_200(client, mock_graph_client):
+    """Liveness probe returns 200 without calling any dependencies."""
+    mock_graph_client.health_check = AsyncMock(side_effect=Exception("down"))
+    resp = client.get("/api/v1/liveness")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"
+
+
+def test_readiness_200_when_all_healthy(client, mock_graph_client):
+    """Readiness returns 200 when all deps are healthy."""
+    mock_graph_client.health_check = AsyncMock(return_value=True)
+    resp = client.get("/api/v1/readiness")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "ready"
+    assert data["checks"]["neo4j"] is True
+
+
+def test_readiness_503_when_neo4j_down(client, mock_graph_client):
+    """Readiness returns 503 when Neo4j is unreachable."""
+    mock_graph_client.health_check = AsyncMock(return_value=False)
+    resp = client.get("/api/v1/readiness")
+    assert resp.status_code == 503
+    data = resp.json()
+    assert data["status"] == "not_ready"
+    assert data["checks"]["neo4j"] is False
+
+
 def test_query(client):
     """Query endpoint returns answer with confidence."""
     resp = client.post("/api/v1/query", json={"text": "What is Cognee?"})
@@ -124,6 +152,50 @@ def test_query_empty_text(client):
     """Query endpoint rejects empty text."""
     resp = client.post("/api/v1/query", json={"text": ""})
     assert resp.status_code == 422
+
+
+def test_query_whitespace_only_text_rejected(client):
+    """Query endpoint rejects whitespace-only text."""
+    resp = client.post("/api/v1/query", json={"text": "   "})
+    assert resp.status_code == 422
+
+
+def test_ingest_whitespace_only_text_rejected(client):
+    """Ingest endpoint rejects whitespace-only text."""
+    resp = client.post("/api/v1/ingest", json={"text": "\n\t\n"})
+    assert resp.status_code == 422
+
+
+def test_query_limit_zero_rejected(client):
+    """Query endpoint rejects limit=0."""
+    resp = client.post("/api/v1/query", json={"text": "test", "limit": 0})
+    assert resp.status_code == 422
+
+
+def test_query_limit_above_max_rejected(client):
+    """Query endpoint rejects limit=51."""
+    resp = client.post("/api/v1/query", json={"text": "test", "limit": 51})
+    assert resp.status_code == 422
+
+
+def test_graph_entities_limit_zero_rejected(client):
+    """Graph entities rejects limit=0."""
+    resp = client.get("/api/v1/graph/entities?limit=0")
+    assert resp.status_code == 422
+
+
+def test_graph_entities_limit_above_max_rejected(client):
+    """Graph entities rejects limit=1001."""
+    resp = client.get("/api/v1/graph/entities?limit=1001")
+    assert resp.status_code == 422
+
+
+def test_ingest_text_whitespace_stripped(client, mock_service):
+    """Ingest strips leading/trailing whitespace from text."""
+    resp = client.post("/api/v1/ingest", json={"text": "  hello world  "})
+    assert resp.status_code == 200
+    call_text = mock_service.add_text.call_args[0][0]
+    assert call_text == "hello world"
 
 
 def test_ingest(client):
@@ -365,7 +437,7 @@ def test_custom_request_id_echoed(client):
 
 
 def test_exception_handler_ingestion_error(client, mock_service):
-    """IngestionError returns 502 with generic message (DEBUG=false)."""
+    """IngestionError returns 502 with code and generic message."""
     from cog_rag_cognee.exceptions import IngestionError
 
     mock_service.add_text = AsyncMock(side_effect=IngestionError("Cognee down"))
@@ -373,13 +445,14 @@ def test_exception_handler_ingestion_error(client, mock_service):
     assert resp.status_code == 502
     data = resp.json()
     assert data["error"] == "IngestionError"
+    assert data["code"] == "ERR_INGESTION"
     # Internal details must NOT leak in production mode
     assert "Cognee down" not in data["detail"]
     assert "internal error" in data["detail"].lower()
 
 
 def test_exception_handler_search_error(client, mock_service):
-    """SearchError returns 502 with generic message (DEBUG=false)."""
+    """SearchError returns 502 with code and generic message."""
     from cog_rag_cognee.exceptions import SearchError
 
     mock_service.query = AsyncMock(side_effect=SearchError("Search failed"))
@@ -387,7 +460,34 @@ def test_exception_handler_search_error(client, mock_service):
     assert resp.status_code == 502
     data = resp.json()
     assert data["error"] == "SearchError"
+    assert data["code"] == "ERR_SEARCH"
     assert "internal error" in data["detail"].lower()
+
+
+def test_validation_error_has_code(client):
+    """Validation errors include structured error code."""
+    resp = client.post("/api/v1/query", json={})
+    assert resp.status_code == 422
+    data = resp.json()
+    assert data["code"] == "ERR_VALIDATION"
+    assert "detail" in data
+
+
+def test_error_code_attributes():
+    """Exception classes expose error code as class attribute."""
+    from cog_rag_cognee.exceptions import (
+        ConfigError,
+        GraphError,
+        IngestionError,
+        OllamaError,
+        SearchError,
+    )
+
+    assert IngestionError.code == "ERR_INGESTION"
+    assert SearchError.code == "ERR_SEARCH"
+    assert GraphError.code == "ERR_GRAPH"
+    assert ConfigError.code == "ERR_CONFIG"
+    assert OllamaError.code == "ERR_OLLAMA"
 
 
 def test_exception_handler_shows_details_in_debug(mock_service, mock_graph_client):
