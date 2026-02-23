@@ -243,12 +243,10 @@ def test_graph_entities_rejects_invalid_type(client):
 
 
 def test_graph_stats_fallback(client, mock_graph_client):
-    """Graph stats returns zeros when Neo4j is unavailable."""
+    """Graph stats returns 502 when Neo4j is unavailable."""
     mock_graph_client.get_stats = AsyncMock(side_effect=Exception("Connection refused"))
     resp = client.get("/api/v1/graph/stats")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["nodes"] == 0
+    assert resp.status_code == 502
 
 
 def test_query_custom_mode(client, mock_service):
@@ -333,12 +331,10 @@ def test_ingest_text_too_long(client):
 
 
 def test_graph_entities_fallback(client, mock_graph_client):
-    """Graph entities returns empty lists when Neo4j is unavailable."""
+    """Graph entities returns 502 when Neo4j is unavailable."""
     mock_graph_client.get_entities = AsyncMock(side_effect=Exception("Connection refused"))
     resp = client.get("/api/v1/graph/entities")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["nodes"] == []
+    assert resp.status_code == 502
 
 
 def test_filename_sanitized(client, mock_service):
@@ -367,24 +363,22 @@ def test_filename_dots_only(client, mock_service):
 
 
 def test_reset(client, mock_service):
-    """Reset endpoint calls service.reset() with confirmation."""
+    """Reset endpoint denied without API key configured."""
     resp = client.post("/api/v1/reset", json={"confirm": True})
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "ok"
-    mock_service.reset.assert_called_once()
+    assert resp.status_code == 403
+    assert "API key" in resp.json()["detail"]
 
 
 def test_reset_requires_confirmation(client):
-    """Reset endpoint rejects requests without confirm=true."""
+    """Reset endpoint denied without API key (confirmation check unreachable)."""
     resp = client.post("/api/v1/reset", json={})
-    assert resp.status_code == 400
-    assert "confirm" in resp.json()["detail"].lower()
+    assert resp.status_code == 403
 
 
 def test_reset_rejects_false_confirmation(client):
-    """Reset endpoint rejects confirm=false."""
+    """Reset endpoint denied without API key (confirmation check unreachable)."""
     resp = client.post("/api/v1/reset", json={"confirm": False})
-    assert resp.status_code == 400
+    assert resp.status_code == 403
 
 
 def test_list_datasets(client, mock_service):
@@ -614,6 +608,72 @@ def test_startup_allows_anonymous_when_explicit(monkeypatch, mock_service, mock_
     app = create_app()
     with TestClient(app) as c:
         resp = c.get("/api/v1/liveness")
+        assert resp.status_code == 200
+
+    set_service(None)
+    set_graph_client(None)
+    get_settings.cache_clear()
+
+
+def test_graph_stats_returns_502_on_error(client, mock_graph_client):
+    """Graph stats should return 502, not empty 200, when Neo4j fails."""
+    mock_graph_client.get_stats = AsyncMock(side_effect=ConnectionError("Neo4j down"))
+    resp = client.get("/api/v1/graph/stats")
+    assert resp.status_code == 502
+
+
+def test_graph_entities_returns_502_on_error(client, mock_graph_client):
+    """Graph entities should return 502, not empty 200, when Neo4j fails."""
+    mock_graph_client.get_entities = AsyncMock(side_effect=ConnectionError("Neo4j down"))
+    resp = client.get("/api/v1/graph/entities")
+    assert resp.status_code == 502
+
+
+def test_reset_denied_in_anonymous_mode(monkeypatch, mock_service, mock_graph_client):
+    """Even with ALLOW_ANONYMOUS=true, /reset must be denied without API key."""
+    monkeypatch.setenv("API_KEY", "")
+    monkeypatch.setenv("ALLOW_ANONYMOUS", "true")
+    monkeypatch.setenv("DEBUG", "false")
+    from cog_rag_cognee.config import get_settings
+    get_settings.cache_clear()
+
+    from api.app import create_app
+    from api.deps import set_graph_client, set_service
+
+    set_service(mock_service)
+    set_graph_client(mock_graph_client)
+
+    app = create_app()
+    with TestClient(app) as c:
+        resp = c.post("/api/v1/reset", json={"confirm": True})
+        assert resp.status_code == 403
+        assert "API key" in resp.json()["detail"]
+
+    set_service(None)
+    set_graph_client(None)
+    get_settings.cache_clear()
+
+
+def test_reset_allowed_with_api_key(monkeypatch, mock_service, mock_graph_client):
+    """With API key set, /reset should work."""
+    monkeypatch.setenv("API_KEY", "secret-key-123")
+    monkeypatch.setenv("ALLOW_ANONYMOUS", "false")
+    from cog_rag_cognee.config import get_settings
+    get_settings.cache_clear()
+
+    from api.app import create_app
+    from api.deps import set_graph_client, set_service
+
+    set_service(mock_service)
+    set_graph_client(mock_graph_client)
+
+    app = create_app()
+    with TestClient(app) as c:
+        resp = c.post(
+            "/api/v1/reset",
+            json={"confirm": True},
+            headers={"X-API-Key": "secret-key-123"},
+        )
         assert resp.status_code == 200
 
     set_service(None)

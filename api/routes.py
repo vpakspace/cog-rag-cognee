@@ -194,9 +194,9 @@ async def graph_stats(gc: GraphClient = Depends(get_graph_client)):
     """Return knowledge graph statistics from Neo4j."""
     try:
         return await gc.get_stats()
-    except Exception:
+    except Exception as exc:
         logger.warning("Failed to fetch graph stats", exc_info=True)
-        return GraphStats()
+        raise HTTPException(status_code=502, detail=f"Graph stats unavailable: {exc}")
 
 
 @router.get("/graph/entities", response_model=GraphEntitiesResponse)
@@ -219,9 +219,9 @@ async def graph_entities(
         nodes = await gc.get_entities(limit=limit, entity_types=types_list)
         edges = await gc.get_relationships(limit=limit * 2, entity_types=types_list)
         return GraphEntitiesResponse(nodes=nodes, edges=edges)
-    except Exception:
+    except Exception as exc:
         logger.warning("Failed to fetch graph entities", exc_info=True)
-        return GraphEntitiesResponse()
+        raise HTTPException(status_code=502, detail=f"Graph entities unavailable: {exc}")
 
 
 class ResetRequest(BaseModel):
@@ -231,8 +231,17 @@ class ResetRequest(BaseModel):
 
 
 @router.post("/reset")
-async def reset(req: ResetRequest, svc: PipelineService = Depends(get_service)):
-    """Reset all Cognee data. Requires confirm=true."""
+async def reset(
+    req: ResetRequest,
+    svc: PipelineService = Depends(get_service),
+):
+    """Reset all Cognee data. Requires confirm=true and a valid API key."""
+    settings = get_settings()
+    if not settings.api_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Reset requires API key. Set API_KEY to use this endpoint.",
+        )
     if not req.confirm:
         raise HTTPException(status_code=400, detail="Set confirm=true to reset all data")
     logger.warning("DATA RESET triggered via API")
