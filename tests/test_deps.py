@@ -1,5 +1,5 @@
 """Tests for dependency injection and API key validation."""
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -55,3 +55,41 @@ async def test_verify_api_key_uses_constant_time_comparison():
         result = await verify_api_key(api_key="secret")
         mock_hmac.compare_digest.assert_called_once_with("secret", "secret")
         assert result == "secret"
+
+
+def test_get_service_lazy_init():
+    """get_service() creates PipelineService when global is None."""
+    import api.deps as deps_mod
+
+    deps_mod._service = None
+    try:
+        with patch.object(deps_mod, "PipelineService") as mock_cls:
+            mock_cls.return_value = MagicMock()
+            svc = deps_mod.get_service()
+            mock_cls.assert_called_once()
+            assert svc is mock_cls.return_value
+    finally:
+        deps_mod._service = None
+
+
+def test_get_graph_client_lazy_init():
+    """get_graph_client() creates GraphClient from settings when global is None."""
+    import api.deps as deps_mod
+
+    deps_mod._graph_client = None
+    try:
+        with patch.object(deps_mod, "GraphClient") as mock_cls, \
+             patch.object(deps_mod, "get_settings") as mock_settings:
+            mock_settings.return_value.graph_database_url = "neo4j://localhost:7687"
+            mock_settings.return_value.graph_database_username = "neo4j"
+            mock_settings.return_value.graph_database_password = "password"
+            mock_cls.return_value = MagicMock()
+            gc = deps_mod.get_graph_client()
+            mock_cls.assert_called_once_with(
+                uri="neo4j://localhost:7687",
+                username="neo4j",
+                password="password",
+            )
+            assert gc is mock_cls.return_value
+    finally:
+        deps_mod._graph_client = None
