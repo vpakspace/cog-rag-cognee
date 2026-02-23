@@ -679,3 +679,17 @@ def test_reset_allowed_with_api_key(monkeypatch, mock_service, mock_graph_client
     set_service(None)
     set_graph_client(None)
     get_settings.cache_clear()
+
+
+def test_request_metrics_logged(client, caplog):
+    """Every request should log method, path, status, and duration."""
+    import logging
+
+    with caplog.at_level(logging.INFO, logger="api.app"):
+        client.get("/api/v1/liveness")
+
+    metrics_logs = [r for r in caplog.records if "GET /api/v1/liveness" in r.getMessage()]
+    assert len(metrics_logs) >= 1
+    msg = metrics_logs[0].getMessage()
+    assert "200" in msg
+    assert "ms" in msg

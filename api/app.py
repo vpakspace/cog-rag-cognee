@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from contextlib import asynccontextmanager
 
@@ -144,11 +145,12 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def add_request_id(request: Request, call_next):
-        """Add X-Request-ID to every response and propagate to logs."""
+        """Add X-Request-ID, security headers, and log request metrics."""
         from cog_rag_cognee.request_context import request_id_var
 
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
         token = request_id_var.set(request_id)
+        start = time.monotonic()
         try:
             try:
                 response = await call_next(request)
@@ -156,10 +158,18 @@ def create_app() -> FastAPI:
                 # BaseHTTPMiddleware may propagate validation errors before
                 # ExceptionMiddleware catches them — handle here as fallback.
                 response = await validation_error_handler(request, exc)
+            duration_ms = round((time.monotonic() - start) * 1000, 1)
             response.headers["X-Request-ID"] = request_id
             response.headers["X-Content-Type-Options"] = "nosniff"
             response.headers["X-Frame-Options"] = "DENY"
             response.headers["Cache-Control"] = "no-store"
+            logger.info(
+                "%s %s %s %.1fms",
+                request.method,
+                request.url.path,
+                response.status_code,
+                duration_ms,
+            )
             return response
         finally:
             request_id_var.reset(token)
