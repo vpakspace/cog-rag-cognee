@@ -32,6 +32,7 @@ router = APIRouter(
 )
 
 _DATASET_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+_ENTITY_TYPE_RE = re.compile(r"^[a-zA-Z0-9_]+$")
 
 
 class QueryRequest(BaseModel):
@@ -146,6 +147,10 @@ async def graph_entities(
         if entity_types
         else None
     )
+    if types_list:
+        for t_name in types_list:
+            if not _ENTITY_TYPE_RE.match(t_name):
+                raise HTTPException(status_code=422, detail=f"Invalid entity type: {t_name}")
     try:
         nodes = await gc.get_entities(limit=limit, entity_types=types_list)
         edges = await gc.get_relationships(limit=limit * 2, entity_types=types_list)

@@ -164,6 +164,12 @@ def test_graph_entities_with_filter(client, mock_graph_client):
     )
 
 
+def test_graph_entities_rejects_invalid_type(client):
+    """Graph entities endpoint rejects entity_types with special characters."""
+    resp = client.get("/api/v1/graph/entities?entity_types=Person;DROP+NODE")
+    assert resp.status_code == 422
+
+
 def test_graph_stats_fallback(client, mock_graph_client):
     """Graph stats returns zeros when Neo4j is unavailable."""
     mock_graph_client.get_stats = AsyncMock(side_effect=Exception("Connection refused"))
