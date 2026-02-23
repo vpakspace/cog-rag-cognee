@@ -76,7 +76,7 @@ with tab_search:
 
     search_mode = st.selectbox(
         t("search_mode"),
-        ["GRAPH_COMPLETION", "RAG_COMPLETION", "CHUNKS", "SUMMARIES"],
+        ["CHUNKS", "GRAPH_COMPLETION", "RAG_COMPLETION", "SUMMARIES"],
         index=0,
     )
 
@@ -140,7 +140,7 @@ with tab_graph:
     if st.button(t("graph_load")) or stats_data.get("nodes", 0) > 0:
         with st.spinner(t("graph_loading")):
             try:
-                params = {"limit": 200}
+                params: dict[str, str | int] = {"limit": 200}
                 if selected_types and selected_types != entity_types_available:
                     params["entity_types"] = ",".join(selected_types)
                 resp = httpx.get(
