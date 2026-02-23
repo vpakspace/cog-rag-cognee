@@ -148,8 +148,16 @@ async def search(req: QueryRequest, svc: PipelineService = Depends(get_service))
 async def ingest(req: IngestRequest, svc: PipelineService = Depends(get_service)):
     """Ingest text and run Cognee ECL pipeline."""
     result = await svc.add_text(req.text, dataset_name=req.dataset_name)
-    cognify_result = await svc.cognify(dataset_name=req.dataset_name)
-    return IngestResponse(ingest=result, cognify=str(cognify_result))
+    try:
+        cognify_result = await svc.cognify(dataset_name=req.dataset_name)
+        return IngestResponse(
+            ingest=result, cognify_status="success", cognify_detail=str(cognify_result)
+        )
+    except Exception as exc:
+        logger.warning("Cognify failed after ingest: %s", exc)
+        return IngestResponse(
+            ingest=result, cognify_status="failed", cognify_detail=str(exc)
+        )
 
 
 @router.post("/ingest-file", response_model=IngestResponse)
@@ -179,8 +187,16 @@ async def ingest_file(
         filename = f"_{filename}"
 
     result = await svc.add_bytes(data, filename, dataset_name)
-    cognify_result = await svc.cognify(dataset_name=dataset_name)
-    return IngestResponse(ingest=result, cognify=str(cognify_result))
+    try:
+        cognify_result = await svc.cognify(dataset_name=dataset_name)
+        return IngestResponse(
+            ingest=result, cognify_status="success", cognify_detail=str(cognify_result)
+        )
+    except Exception as exc:
+        logger.warning("Cognify failed after ingest: %s", exc)
+        return IngestResponse(
+            ingest=result, cognify_status="failed", cognify_detail=str(exc)
+        )
 
 
 @router.get("/datasets", response_model=list[str])

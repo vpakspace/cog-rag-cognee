@@ -207,7 +207,7 @@ def test_ingest(client):
     assert resp.status_code == 200
     data = resp.json()
     assert "ingest" in data
-    assert "cognify" in data
+    assert "cognify_status" in data
 
 
 def test_graph_stats(client):
@@ -271,6 +271,19 @@ def test_ingest_custom_dataset(client, mock_service):
     mock_service.cognify.assert_called_once_with(dataset_name="custom")
 
 
+def test_ingest_cognify_failure_returns_partial_success(client, mock_service):
+    """Ingest should return 200 with cognify_status='failed' when cognify fails."""
+    mock_service.add_text = AsyncMock(
+        return_value={"status": "added", "chars": 5, "dataset": "main"},
+    )
+    mock_service.cognify = AsyncMock(side_effect=Exception("cognify timeout"))
+    resp = client.post("/api/v1/ingest", json={"text": "hello", "dataset_name": "main"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["cognify_status"] == "failed"
+    assert "cognify timeout" in data["cognify_detail"]
+
+
 def test_ingest_file_txt(client, mock_service):
     """Ingest-file endpoint accepts multipart file upload."""
     resp = client.post(
@@ -280,7 +293,7 @@ def test_ingest_file_txt(client, mock_service):
     assert resp.status_code == 200
     data = resp.json()
     assert "ingest" in data
-    assert "cognify" in data
+    assert "cognify_status" in data
     mock_service.add_bytes.assert_called_once_with(
         b"Hello from file", "test.txt", "main"
     )
@@ -810,6 +823,28 @@ def test_request_metrics_logged(client, caplog):
     msg = metrics_logs[0].getMessage()
     assert "200" in msg
     assert "ms" in msg
+
+
+def test_log_records_contain_request_id(client, caplog):
+    """Log records should include the request ID from the response header."""
+    from cog_rag_cognee.logging_config import _RequestIdFilter
+
+    # Install the filter on the api.app logger so caplog records receive request_id.
+    api_logger = logging.getLogger("api.app")
+    filt = _RequestIdFilter()
+    api_logger.addFilter(filt)
+    try:
+        with caplog.at_level(logging.INFO):
+            resp = client.get("/api/v1/liveness")
+    finally:
+        api_logger.removeFilter(filt)
+
+    request_id = resp.headers["X-Request-ID"]
+    # _RequestIdFilter injects request_id as a record attribute (not in getMessage()).
+    # Verify at least one INFO record from api.app carries the correct request_id.
+    api_records = [r for r in caplog.records if r.name == "api.app"]
+    assert api_records, "Expected at least one log record from api.app"
+    assert any(getattr(r, "request_id", None) == request_id for r in api_records)
 
 
 def test_cors_wildcard_rejected_in_prod(monkeypatch, mock_service, mock_graph_client):

@@ -40,7 +40,8 @@ class IngestResponse(BaseModel):
     """Response for /ingest and /ingest-file endpoints."""
 
     ingest: dict[str, Any]
-    cognify: str
+    cognify_status: str = "success"  # "success" or "failed"
+    cognify_detail: str = ""
 
 
 class GraphStats(BaseModel):
