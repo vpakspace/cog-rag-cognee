@@ -33,14 +33,28 @@ def _get_http_client() -> httpx.Client:
     return httpx.Client(base_url=API_BASE, headers=headers)
 
 
+def _safe_json(resp: httpx.Response) -> dict | list | None:
+    """Parse JSON response safely, return None on non-JSON or decode error."""
+    content_type = resp.headers.get("content-type", "")
+    if "application/json" not in content_type:
+        return None
+    try:
+        return resp.json()
+    except Exception:
+        return None
+
+
 # --- Sidebar health status ---
 try:
     _health_resp = _get_http_client().get("/health", timeout=3)
     if _health_resp.status_code == 200:
-        _health = _health_resp.json()
-        _neo4j_icon = "🟢" if _health.get("neo4j") else "🔴"
-        _ollama_icon = "🟢" if _health.get("ollama") else "🔴"
-        st.sidebar.markdown(f"{_neo4j_icon} Neo4j  {_ollama_icon} Ollama")
+        _health = _safe_json(_health_resp)
+        if _health is None:
+            st.sidebar.markdown(f"⚠️ {t('health_fail')}")
+        else:
+            _neo4j_icon = "🟢" if _health.get("neo4j") else "🔴"
+            _ollama_icon = "🟢" if _health.get("ollama") else "🔴"
+            st.sidebar.markdown(f"{_neo4j_icon} Neo4j  {_ollama_icon} Ollama")
     else:
         st.sidebar.markdown(f"⚠️ {t('health_fail')}")
 except Exception:
@@ -145,7 +159,7 @@ with tab_graph:
     # Fetch stats for sidebar filter
     try:
         stats_resp = _get_http_client().get("/graph/stats", timeout=5)
-        stats_data = stats_resp.json() if stats_resp.status_code == 200 else {}
+        stats_data = _safe_json(stats_resp) or {} if stats_resp.status_code == 200 else {}
     except Exception:
         stats_data = {}
 
@@ -184,10 +198,13 @@ with tab_graph:
                     timeout=10,
                 )
                 if resp.status_code == 200:
-                    graph_data = resp.json()
-                    nodes = graph_data.get("nodes", [])
-                    edges = graph_data.get("edges", [])
-                    render_graph(nodes, edges)
+                    graph_data = _safe_json(resp)
+                    if graph_data is None:
+                        st.warning(t("graph_error"))
+                    else:
+                        nodes = graph_data.get("nodes", [])
+                        edges = graph_data.get("edges", [])
+                        render_graph(nodes, edges)
                 else:
                     st.warning(t("graph_error"))
             except Exception:
