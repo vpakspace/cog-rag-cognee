@@ -6,7 +6,7 @@ import re
 import time
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
@@ -249,6 +249,7 @@ class ResetRequest(BaseModel):
 @router.post("/reset")
 async def reset(
     req: ResetRequest,
+    request: Request,
     svc: PipelineService = Depends(get_service),
 ):
     """Reset all Cognee data. Requires confirm=true and a valid API key."""
@@ -260,6 +261,7 @@ async def reset(
         )
     if not req.confirm:
         raise HTTPException(status_code=400, detail="Set confirm=true to reset all data")
-    logger.warning("DATA RESET triggered via API")
+    client_host = request.client.host if request.client else "unknown"
+    logger.warning("DATA RESET by %s via API", client_host)
     await svc.reset()
     return {"status": "ok"}
