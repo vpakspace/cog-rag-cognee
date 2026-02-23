@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -52,6 +53,26 @@ class Settings(BaseSettings):
 
     # UI
     ui_port: int = 8506
+
+    @field_validator("cognee_timeout")
+    @classmethod
+    def validate_cognee_timeout(cls, v: int) -> int:
+        if not (10 <= v <= 3600):
+            raise ValueError("cognee_timeout must be between 10 and 3600 seconds")
+        return v
+
+    @field_validator("max_upload_bytes")
+    @classmethod
+    def validate_max_upload_bytes(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("max_upload_bytes must be positive")
+        return v
+
+    @model_validator(mode="after")
+    def validate_ports(self) -> "Settings":
+        if self.api_port == self.ui_port:
+            raise ValueError(f"api_port and ui_port must differ (both are {self.api_port})")
+        return self
 
     @property
     def ollama_base_url(self) -> str:

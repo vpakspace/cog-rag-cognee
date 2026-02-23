@@ -1,5 +1,8 @@
 """Tests for configuration module."""
 
+import pytest
+from pydantic import ValidationError
+
 from cog_rag_cognee.config import Settings, get_settings
 
 
@@ -39,3 +42,27 @@ def test_cognee_timeout_default():
     """cognee_timeout defaults to 300 seconds."""
     s = Settings()
     assert s.cognee_timeout == 300
+
+
+def test_cognee_timeout_minimum():
+    """cognee_timeout below 10 is rejected."""
+    with pytest.raises(ValidationError):
+        Settings(cognee_timeout=5)
+
+
+def test_cognee_timeout_maximum():
+    """cognee_timeout above 3600 is rejected."""
+    with pytest.raises(ValidationError):
+        Settings(cognee_timeout=5000)
+
+
+def test_max_upload_bytes_positive():
+    """max_upload_bytes must be > 0."""
+    with pytest.raises(ValidationError):
+        Settings(max_upload_bytes=0)
+
+
+def test_port_collision_rejected():
+    """api_port == ui_port is rejected."""
+    with pytest.raises(ValidationError):
+        Settings(api_port=8000, ui_port=8000)
