@@ -296,6 +296,16 @@ def test_reset_rejects_false_confirmation(client):
     assert resp.status_code == 400
 
 
+def test_health_response_model(client, mock_graph_client):
+    """Health endpoint returns all HealthStatus fields."""
+    mock_graph_client.health_check = AsyncMock(return_value=True)
+    resp = client.get("/api/v1/health")
+    data = resp.json()
+    assert "status" in data
+    assert "neo4j" in data
+    assert "ollama" in data
+
+
 def test_exception_handler_ingestion_error(client, mock_service):
     """IngestionError returns 502 with generic message (DEBUG=false)."""
     from cog_rag_cognee.exceptions import IngestionError

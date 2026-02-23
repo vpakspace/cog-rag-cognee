@@ -7,8 +7,6 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, TypeVar
 
-T = TypeVar("T")
-
 import cognee
 from cognee.modules.search.types.SearchType import SearchType
 
@@ -17,6 +15,7 @@ from cog_rag_cognee.docling_loader import DoclingLoader
 from cog_rag_cognee.exceptions import IngestionError, SearchError
 from cog_rag_cognee.models import QAResult, SearchResult
 
+T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
 _TRANSIENT_ERRORS = (ConnectionError, TimeoutError, OSError)
