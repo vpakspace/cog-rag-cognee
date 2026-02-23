@@ -1,4 +1,4 @@
-cognee[ollama,neo4j]>=0.5.0
+cognee[ollama,neo4j]>=0.5.0,<0.6.0
 neo4j>=5.0.0
 fastapi>=0.115.0
 python-multipart>=0.0.9
