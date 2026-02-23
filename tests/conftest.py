@@ -17,7 +17,7 @@ if "cognee" not in sys.modules:
     # Stub deep submodule path for SearchType enum used by service.py
     import enum
 
-    class _FakeSearchType(str, enum.Enum):
+    class _FakeSearchType(enum.StrEnum):
         SUMMARIES = "SUMMARIES"
         CHUNKS = "CHUNKS"
         INSIGHTS = "INSIGHTS"
