@@ -60,8 +60,8 @@ class GraphClient:
             async with self._driver.session() as session:
                 await session.run("RETURN 1")
             return True
-        except Exception:
-            logger.warning("Neo4j health check failed", exc_info=True)
+        except _TRANSIENT as exc:
+            logger.warning("Neo4j health check failed: %s", exc)
             return False
 
     async def get_entities(

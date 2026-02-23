@@ -197,9 +197,42 @@ class TestHealthCheck:
     @pytest.mark.asyncio
     async def test_failure(self, graph_client, mock_driver):
         _, session = mock_driver
-        session.run.side_effect = Exception("Connection refused")
+        session.run.side_effect = ConnectionError("Connection refused")
 
         assert await graph_client.health_check() is False
+
+    @pytest.mark.asyncio
+    async def test_health_check_returns_false_on_transient_error(self):
+        """health_check should return False on ConnectionError."""
+        from cog_rag_cognee.graph_client import GraphClient
+
+        gc = GraphClient.__new__(GraphClient)
+        mock_driver = MagicMock()
+        mock_session = AsyncMock()
+        mock_session.run = AsyncMock(side_effect=ConnectionError("refused"))
+        mock_driver.session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_driver.session.return_value.__aexit__ = AsyncMock(return_value=False)
+        gc._driver = mock_driver
+
+        result = await gc.health_check()
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_health_check_propagates_non_transient_error(self):
+        """health_check should not swallow non-transient errors like RuntimeError."""
+        from cog_rag_cognee.graph_client import GraphClient
+
+        gc = GraphClient.__new__(GraphClient)
+        mock_driver = MagicMock()
+        mock_session = AsyncMock()
+        mock_session.run = AsyncMock(side_effect=RuntimeError("unexpected"))
+        mock_driver.session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_driver.session.return_value.__aexit__ = AsyncMock(return_value=False)
+        gc._driver = mock_driver
+
+        with pytest.raises(RuntimeError, match="unexpected"):
+            await gc.health_check()
 
 
 class TestRetry:
