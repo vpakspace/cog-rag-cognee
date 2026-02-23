@@ -1011,3 +1011,43 @@ def test_max_upload_bytes_zero_rejected():
 
     with pytest.raises(ValidationError, match="max_upload_bytes"):
         Settings(max_upload_bytes=0)
+
+
+def test_fast_request_no_slow_warning(client, caplog):
+    """Normal fast requests must not trigger a slow-request warning."""
+    with caplog.at_level(logging.WARNING, logger="api.app"):
+        client.get("/api/v1/liveness")
+    slow_logs = [r for r in caplog.records if "Slow request" in r.getMessage()]
+    assert len(slow_logs) == 0
+
+
+def test_reset_logs_client_ip(monkeypatch, mock_service, mock_graph_client, caplog):
+    """Reset endpoint logs the client IP address."""
+    monkeypatch.setenv("API_KEY", "secret-key-123")
+    monkeypatch.setenv("ALLOW_ANONYMOUS", "false")
+    from cog_rag_cognee.config import get_settings
+
+    get_settings.cache_clear()
+
+    from api.app import create_app
+    from api.deps import set_graph_client, set_service
+
+    set_service(mock_service)
+    set_graph_client(mock_graph_client)
+
+    app = create_app()
+    with TestClient(app) as c, caplog.at_level(logging.WARNING):
+        c.post(
+            "/api/v1/reset",
+            json={"confirm": True},
+            headers={"X-API-Key": "secret-key-123"},
+        )
+
+    set_service(None)
+    set_graph_client(None)
+    get_settings.cache_clear()
+
+    reset_logs = [r for r in caplog.records if "DATA RESET" in r.getMessage()]
+    assert len(reset_logs) >= 1
+    msg = reset_logs[0].getMessage()
+    assert "testclient" in msg.lower() or "127" in msg or "unknown" in msg

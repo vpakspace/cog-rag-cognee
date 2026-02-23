@@ -179,6 +179,13 @@ def create_app() -> FastAPI:
                 # ExceptionMiddleware catches them — handle here as fallback.
                 response = await validation_error_handler(request, exc)
             duration_ms = round((time.monotonic() - start) * 1000, 1)
+            if duration_ms > 5000:
+                logger.warning(
+                    "Slow request: %s %s took %.1fms",
+                    request.method,
+                    request.url.path,
+                    duration_ms,
+                )
             response.headers["X-Request-ID"] = request_id
             response.headers["X-Content-Type-Options"] = "nosniff"
             response.headers["X-Frame-Options"] = "DENY"
