@@ -463,6 +463,51 @@ async def test_check_ollama_models_returns_availability():
     assert result["unknown-model:latest"] is False
 
 
+@pytest.mark.asyncio
+async def test_check_ollama_models_non_200_returns_all_false():
+    """check_ollama_models returns False for all models when status != 200."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from cog_rag_cognee.health import check_ollama_models
+
+    fake_response = MagicMock()
+    fake_response.status_code = 500
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(return_value=fake_response)
+
+    with patch("cog_rag_cognee.health.httpx.AsyncClient", return_value=mock_client):
+        result = await check_ollama_models(
+            "http://localhost:11434/v1",
+            ["llama3.1:8b", "nomic-embed-text:latest"],
+        )
+
+    assert result == {"llama3.1:8b": False, "nomic-embed-text:latest": False}
+
+
+@pytest.mark.asyncio
+async def test_check_ollama_models_connection_error_returns_all_false():
+    """check_ollama_models returns False for all models on connection error."""
+    from unittest.mock import AsyncMock, patch
+
+    from cog_rag_cognee.health import check_ollama_models
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(side_effect=ConnectionError("refused"))
+
+    with patch("cog_rag_cognee.health.httpx.AsyncClient", return_value=mock_client):
+        result = await check_ollama_models(
+            "http://localhost:11434/v1",
+            ["llama3.1:8b", "nomic-embed-text:latest"],
+        )
+
+    assert result == {"llama3.1:8b": False, "nomic-embed-text:latest": False}
+
+
 def test_request_id_in_response(client):
     """Every response includes X-Request-ID header."""
     resp = client.get("/api/v1/health")
@@ -847,6 +892,17 @@ def test_log_records_contain_request_id(client, caplog):
     assert any(getattr(r, "request_id", None) == request_id for r in api_records)
 
 
+def test_validation_error_still_gets_security_headers(client):
+    """Validation errors processed through middleware still get security headers."""
+    resp = client.post("/api/v1/query", json={})  # triggers 422
+    assert resp.status_code == 422
+    # Verify middleware ran (security headers applied even to error responses)
+    assert "x-request-id" in resp.headers
+    assert resp.headers.get("x-content-type-options") == "nosniff"
+    assert resp.headers.get("x-frame-options") == "DENY"
+    assert resp.headers.get("cache-control") == "no-store"
+
+
 def test_cors_wildcard_rejected_in_prod(monkeypatch, mock_service, mock_graph_client):
     """CORS '*' should be stripped in non-debug mode."""
     monkeypatch.setenv("API_KEY", "test-key")
@@ -875,3 +931,83 @@ def test_cors_wildcard_rejected_in_prod(monkeypatch, mock_service, mock_graph_cl
     set_service(None)
     set_graph_client(None)
     get_settings.cache_clear()
+
+
+def test_ingest_file_cognify_failure_returns_partial_success(client, mock_service):
+    """Ingest-file returns 200 with cognify_status='failed' when cognify raises."""
+    mock_service.add_bytes = AsyncMock(
+        return_value={"status": "added", "file": "test.txt", "chars": 12},
+    )
+    mock_service.cognify = AsyncMock(side_effect=Exception("cognify boom"))
+    resp = client.post(
+        "/api/v1/ingest-file",
+        files={"file": ("test.txt", b"some content", "text/plain")},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["cognify_status"] == "failed"
+    assert "cognify boom" in data["cognify_detail"]
+
+
+def test_neo4j_timeout_lower_bound():
+    """neo4j_timeout=1 is the minimum valid value."""
+    from cog_rag_cognee.config import Settings
+
+    s = Settings(neo4j_timeout=1)
+    assert s.neo4j_timeout == 1
+
+
+def test_neo4j_timeout_zero_rejected():
+    """neo4j_timeout=0 is below minimum."""
+    from pydantic import ValidationError
+
+    from cog_rag_cognee.config import Settings
+
+    with pytest.raises(ValidationError, match="neo4j_timeout"):
+        Settings(neo4j_timeout=0)
+
+
+def test_neo4j_timeout_upper_bound():
+    """neo4j_timeout=300 is the maximum valid value."""
+    from cog_rag_cognee.config import Settings
+
+    s = Settings(neo4j_timeout=300)
+    assert s.neo4j_timeout == 300
+
+
+def test_neo4j_timeout_above_max_rejected():
+    """neo4j_timeout=301 exceeds maximum."""
+    from pydantic import ValidationError
+
+    from cog_rag_cognee.config import Settings
+
+    with pytest.raises(ValidationError, match="neo4j_timeout"):
+        Settings(neo4j_timeout=301)
+
+
+def test_cognee_timeout_lower_bound():
+    """cognee_timeout=10 is the minimum valid value."""
+    from cog_rag_cognee.config import Settings
+
+    s = Settings(cognee_timeout=10)
+    assert s.cognee_timeout == 10
+
+
+def test_cognee_timeout_below_min_rejected():
+    """cognee_timeout=9 is below minimum."""
+    from pydantic import ValidationError
+
+    from cog_rag_cognee.config import Settings
+
+    with pytest.raises(ValidationError, match="cognee_timeout"):
+        Settings(cognee_timeout=9)
+
+
+def test_max_upload_bytes_zero_rejected():
+    """max_upload_bytes=0 is not positive."""
+    from pydantic import ValidationError
+
+    from cog_rag_cognee.config import Settings
+
+    with pytest.raises(ValidationError, match="max_upload_bytes"):
+        Settings(max_upload_bytes=0)
