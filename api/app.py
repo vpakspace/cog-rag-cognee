@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -121,5 +122,13 @@ def create_app() -> FastAPI:
     from api.routes import router
 
     app.include_router(router)
+
+    @app.middleware("http")
+    async def add_request_id(request: Request, call_next):
+        """Add X-Request-ID to every response for request tracing."""
+        request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
 
     return app
